@@ -1,0 +1,71 @@
+{
+  "element_count": 3,
+  "near_earth_objects": {
+    "2025-10-01": [
+      {
+        "id": "123456",
+        "name": "(2025 AB)",
+        "absolute_magnitude_h": 22.1,
+        "is_potentially_hazardous_asteroid": false,
+        "estimated_diameter": {
+          "kilometers": {
+            "estimated_diameter_min": 0.11,
+            "estimated_diameter_max": 0.24
+          }
+        },
+        "close_approach_data": [
+          {
+            "close_approach_date": "2025-10-01",
+            "relative_velocity": { "kilometers_per_second": "12.3" },
+            "miss_distance": { "kilometers": "543210" },
+            "orbiting_body": "Earth"
+          }
+        ]
+      }
+    ],
+    "2025-10-02": [
+      {
+        "id": "654321",
+        "name": "(2025 CD)",
+        "absolute_magnitude_h": 21.7,
+        "is_potentially_hazardous_asteroid": true,
+        "estimated_diameter": {
+          "kilometers": {
+            "estimated_diameter_min": 0.15,
+            "estimated_diameter_max": 0.32
+          }
+        },
+        "close_approach_data": [
+          {
+            "close_approach_date": "2025-10-02",
+            "relative_velocity": { "kilometers_per_second": "18.9" },
+            "miss_distance": { "kilometers": "763210" },
+            "orbiting_body": "Earth"
+          }
+        ]
+      }
+    ],
+    "2025-10-03": [
+      {
+        "id": "789012",
+        "name": "(2025 EF)",
+        "absolute_magnitude_h": 24.0,
+        "is_potentially_hazardous_asteroid": false,
+        "estimated_diameter": {
+          "kilometers": {
+            "estimated_diameter_min": 0.05,
+            "estimated_diameter_max": 0.12
+          }
+        },
+        "close_approach_data": [
+          {
+            "close_approach_date": "2025-10-03",
+            "relative_velocity": { "kilometers_per_second": "8.7" },
+            "miss_distance": { "kilometers": "321000" },
+            "orbiting_body": "Earth"
+          }
+        ]
+      }
+    ]
+  }
+}
