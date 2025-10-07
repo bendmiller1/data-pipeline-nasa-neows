@@ -26,7 +26,7 @@ DEMO_MODE = os.getenv("DEMO_MODE", "0").lower() in ("1", "true", "yes")
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
 DATA_DIR = ROOT_DIR / "data"
-PROCCESSED_DIR = DATA_DIR / "processed"
+PROCESSED_DIR = DATA_DIR / "processed"
 WAREHOUSE_DIR = DATA_DIR / "warehouse"
 SAMPLE_DATA_DIR = ROOT_DIR / "sample_data"
 
@@ -44,7 +44,7 @@ NASA_API_BASE_URL = "https://api.nasa.gov/neo/rest/v1"
 # Output Files
 #------------------------------------------------------------------------------
 
-CSV_OUTPUT = PROCCESSED_DIR / "neows_latest.csv"
+CSV_OUTPUT = PROCESSED_DIR / "neows_latest.csv"
 DB_PATH = WAREHOUSE_DIR / "neows_data.db"
 
 #------------------------------------------------------------------------------
