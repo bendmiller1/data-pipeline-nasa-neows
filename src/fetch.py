@@ -1,9 +1,18 @@
 """
-Data fetch layer for NASA NeoWs Data Pipeline.
+Data fetch layer for the NASA NeoWs Data Pipeline.
 
-- In DEMO_MODE: loads a local JSON sample (no network).
-- In LIVE_MODE: calls the official NASA NeoWs API using DEMO_KEY or 
-user-provided API key.
+This module retrieves Near-Earth Object (NEO) data from NASA's NeoWs API.
+It supports two execution modes:
+
+1. DEMO_MODE (default): Loads a cached local JSON sample for offline testing.
+2. LIVE_MODE: Performs authenticated API requests to the NASA NeoWs endpoint.
+
+Typical usage example:
+    python -m src.fetch
+
+Environment variables (configured in .env):
+    - DEMO_MODE: "1" or "true" to use sample data instead of API calls.
+    - NASA_API_KEY: Optional; defaults to "DEMO_KEY".
 """
 
 import json
@@ -30,9 +39,23 @@ def _http_get(
         max_retries: int = 4, 
         timeout_seconds: int = 15) -> Dict[str, Any]:
     """
-    Perform an HTTP GET with exponential backoff on rate-limit (429) 
-    and 5xx errors.
-    Returns parsed JSON on success; raises on failure after retries.
+    Perform an HTTP GET request with exponential backoff for rate-limit (429)
+    and transient 5xx server errors.
+
+    Args:
+        url (str): The full endpoint URL.
+        params (Dict[str, Any]): Query parameters to include in the request.
+        max_retries (int, optional): Maximum number of retry attempts.
+            Defaults to 4.
+        timeout_seconds (int, optional): Timeout for each request in seconds.
+            Defaults to 15.
+
+    Returns:
+        Dict[str, Any]: Parsed JSON response from the server.
+
+    Raises:
+        RuntimeError: If all retry attempts fail or no valid response is received.
+        requests.exceptions.RequestException: For non-retryable HTTP errors.
     """
     for attempt_index in range(max_retries + 1):
         response = requests.get(url, params=params, timeout=timeout_seconds)
@@ -59,12 +82,23 @@ def _http_get(
 
 def fetch_feed(start_date: str, end_date: str) -> Dict[str, Any]:
     """
-    Fetch NeoWs 'feed' for a date range (YYYY-MM-DD to YYYY-MM-DD).
+    Retrieve Near-Earth Object data for a specified date range.
 
-    DEMO_MODE:
-      - Reads local file: sample_data/feed_sample.json
-    LIVE:
-      - Calls: /feed?start_date=...&end_date=...&api_key=...
+    This function loads sample data in DEMO_MODE or fetches live data
+    from NASA's NeoWs API in LIVE_MODE. Results contain detailed asteroid
+    information grouped by date.
+
+    Args:
+        start_date (str): Start date in "YYYY-MM-DD" format.
+        end_date (str): End date in "YYYY-MM-DD" format.
+
+    Returns:
+        Dict[str, Any]: The full feed JSON response from NeoWs containing
+        asteroid data grouped by date.
+
+    Raises:
+        FileNotFoundError: If DEMO_MODE is enabled but the sample file is missing.
+        requests.exceptions.RequestException: If a network or API error occurs.
     """
     if DEMO_MODE:
         sample_path = Path(SAMPLE_DATA_DIR) / "feed_sample.json"
@@ -82,8 +116,11 @@ def fetch_feed(start_date: str, end_date: str) -> Dict[str, Any]:
     return _http_get(FEED_URL, params=params)
 
 if __name__ == "__main__":
-    # Quick manual test:
-    # DEMO_MODE=1 -> loads local JSON
-    # DEMO_MODE=0 -> makes a real API call using DEMO_KEY or your configured key
+    """
+    Script entry point for manual testing.
+
+    DEMO_MODE=1 -> Loads local JSON file.
+    DEMO_MODE=0 -> Fetches live data from NASA using DEMO_KEY or user API key.
+    """
     feed_json = fetch_feed("2025-10-01", "2025-10-07")
     print("Top-level keys:", list(feed_json.keys()))
