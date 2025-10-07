@@ -1,8 +1,10 @@
-__pycache__/
+**/__pycache__/
 *.pyc
 .venv/
 .env
-.DS_Store
+*.DS_Store
+.vscode/
 data/warehouse/*.db
 data/processed/*.tmp
+data/processed/*.csv
 sample_data/*.tmp
