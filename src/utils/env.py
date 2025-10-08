@@ -28,3 +28,19 @@ def set_demo_mode_for_process(enable_demo: bool) -> None:
     """
     if enable_demo:
         os.environ["DEMO_MODE"] = "1"
+
+
+def set_live_mode_for_process(enable_live: bool) -> None:
+    """
+    Force LIVE mode for the current Python process.
+
+    This sets the environment variable DEMO_MODE to "0" when enabled, which
+    downstream modules (e.g., src.config) interpret as a signal to use live
+    API calls instead of sample data.
+
+    Args:
+        enable_live (bool): If True, sets DEMO_MODE="0" for this process.
+            If False, does nothing (leaves env unchanged).
+    """
+    if enable_live:
+        os.environ["DEMO_MODE"] = "0"
