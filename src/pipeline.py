@@ -223,6 +223,6 @@ def main(argv: List[str] | None = None) -> int:
     
 
 if __name__ == "__main__":
-     # Allow: python -m src.pipeline --mode feed --start ... --end ... [--demo]
-    #    or: python -m src.pipeline --mode browse --pages N [--demo]
+    # Allow: python -m src.pipeline --mode feed --start ... --end ... [--demo]
+    #    or: python -m src.pipeline --mode browse --pages N [--demo]  (future feature)
     sys.exit(main())
