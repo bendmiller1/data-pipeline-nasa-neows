@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS neows (
     PRIMARY KEY (close_approach_date, id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_neows_date ON neows (id);
+CREATE INDEX IF NOT EXISTS idx_neows_id ON neows (id);
 """
 
 

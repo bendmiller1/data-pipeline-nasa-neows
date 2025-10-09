@@ -105,7 +105,7 @@ def fetch_feed(start_date: str, end_date: str) -> Dict[str, Any]: # Main functio
     if DEMO_MODE: # If DEMO_MODE is True, load data from the local sample file
         # Validate requested dates are within sample range
         if start_date < "2025-01-01" or end_date > "2025-10-31":
-            raise ValueError("Demo mode supports dates from 2024-01-01 to 2025-10-31")
+            raise ValueError("Demo mode supports dates from 2025-01-01 to 2025-10-31")
             
         sample_path = Path(SAMPLE_DATA_DIR) / "feed_sample.json" # Constructs the full path to the sample JSON file
         print(f"[DEMO_MODE] Loading cached sample from {sample_path}") 
