@@ -54,7 +54,7 @@ class TestPipelineIntegration:
             "--start", "2025-10-01",
             "--end", "2025-10-03",
             "--demo"
-        ], capture_output=True, text=True, cwd = Path.cwd)
+        ], capture_output=True, text=True, cwd=Path.cwd())
 
         # Assert pipeline completed successfully
         assert result.returncode == 0, f"Pipeline failed with output: {result.stderr}"

@@ -24,7 +24,7 @@ Typical usage examples:
 from __future__ import annotations # Allows the program to use newer type hint syntax in older Python versions
 
 from pathlib import Path # Allows the program to work with file system path objects in a platform-independent way
-from typing import Optional # Provides type hinting for optional parameters
+from typing import Optional, Literal # Provides type hinting for optional parameters and literal types
 
 import sqlite3 # Provides the interface for interacting with SQLite databases
 import pandas as pd # Provides useful "database-like" data structures (Series - one column with rows, DataFrame - multiple columns with rows) and data manipulation functions
@@ -157,7 +157,7 @@ def load_dataframe_to_sqlite( # Main function to load a pandas DataFrame into th
         dataframe: pd.DataFrame,
         database_path: Path = DB_PATH,
         table_name: str = "neows",
-        if_exists: str = "append",
+        if_exists: Literal["fail", "replace", "append"] = "append",
         chunk_size: Optional[int] = None,
         delete_range_before_insert: bool = True,
         start_date: Optional[str] = None,
