@@ -8,13 +8,14 @@ Typical usage example:
     from src.utils.env import set_demo_mode_for_process
     set_demo_mode_for_process(True)
 """
+# This module allows the user to set the pipeline mode (demo vs live) at runtime without changing the .env file
 
 from __future__ import annotations
 
-import os
+import os # Provides access to environment variables to set the mode for the current process
 
 
-def set_demo_mode_for_process(enable_demo: bool) -> None:
+def set_demo_mode_for_process(enable_demo: bool) -> None: # Takes a boolean parameter: enable_demo = True to set demo mode, False to leave unchanged
     """
     Optionally force DEMO mode for the current Python process.
 
@@ -27,11 +28,11 @@ def set_demo_mode_for_process(enable_demo: bool) -> None:
             If False, does nothing (leaves env unchanged).
     """
     if enable_demo:
-        os.environ["DEMO_MODE"] = "1"
+        os.environ["DEMO_MODE"] = "1" # If enable_demo is True, sets the environment variable DEMO_MODE to "1" for the current process
 
 
-def set_live_mode_for_process(enable_live: bool) -> None:
-    """
+def set_live_mode_for_process(enable_live: bool) -> None: # Takes a boolean parameter: enable_live = True to set live mode, False to leave unchanged
+    """ 
     Force LIVE mode for the current Python process.
 
     This sets the environment variable DEMO_MODE to "0" when enabled, which
@@ -43,4 +44,4 @@ def set_live_mode_for_process(enable_live: bool) -> None:
             If False, does nothing (leaves env unchanged).
     """
     if enable_live:
-        os.environ["DEMO_MODE"] = "0"
+        os.environ["DEMO_MODE"] = "0" # If enable_live is True, sets the environment variable DEMO_MODE to "0" for the current process

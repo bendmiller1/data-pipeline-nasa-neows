@@ -19,16 +19,17 @@ Typical usage examples:
     df = read_csv_to_dataframe(Path("data/processed/neows_latest.csv"))
     load_dataframe_to_sqlite(df, delete_range_before_insert=True)
 """
+# This module handles loading the transformed NeoWs CSV data into a SQLite database
 
-from __future__ import annotations
+from __future__ import annotations # Allows the program to use newer type hint syntax in older Python versions
 
-from pathlib import Path
-from typing import Optional
+from pathlib import Path # Allows the program to work with file system path objects in a platform-independent way
+from typing import Optional # Provides type hinting for optional parameters
 
-import sqlite3
-import pandas as pd
+import sqlite3 # Provides the interface for interacting with SQLite databases
+import pandas as pd # Provides useful "database-like" data structures (Series - one column with rows, DataFrame - multiple columns with rows) and data manipulation functions
 
-from .config import(
+from .config import( # Import configuration variables from config.py
     DB_PATH,
     CSV_OUTPUT,
     WAREHOUSE_DIR,
@@ -36,10 +37,12 @@ from .config import(
 
 # -----------------------------------------------------------------------------
 # Default schema: date-first composite PK for efficient date-range queries,
-# plus a separate index on id for fast asteroid lookups.
+# plus a separate index on id for fast asteroid lookups (for future browse mode).
 # -----------------------------------------------------------------------------
 
-DEFAULT_SCHEMA_SQL = """
+# Default SQL schema to create the neows table if it does not exist
+# (suitable for the current transform output in both DEMO and LIVE modes)
+DEFAULT_SCHEMA_SQL = """ 
 CREATE TABLE IF NOT EXISTS neows (
     id TEXT,
     name TEXT,
@@ -54,13 +57,13 @@ CREATE TABLE IF NOT EXISTS neows (
     PRIMARY KEY (close_approach_date, id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_neows_date ON neows (close_approach_date);
+CREATE INDEX IF NOT EXISTS idx_neows_date ON neows (id);
 """
 
 
-def ensure_database_ready(
-        database_path: Path = DB_PATH,
-        schema_sql_path: Optional[Path] = None,
+def ensure_database_ready( # Function to ensure the SQLite database and neows table exist (creates them if not)
+        database_path: Path = DB_PATH, # Path to the SQLite database file (defaults to the configured DB_PATH)
+        schema_sql_path: Optional[Path] = None, # Optional path to a .sql file containing DDL statements (if None, uses the DEFAULT_SCHEMA_SQL)
 ) -> None:
     """
     Create the SQLite database (and neows table) if they do not exist.
@@ -77,22 +80,22 @@ def ensure_database_ready(
     Raises:
         sqlite3.Error: If the database or schema creation fails.
     """
-    database_path.parent.mkdir(parents=True, exist_ok=True)
+    database_path.parent.mkdir(parents=True, exist_ok=True) # Ensures that the parent directory for the database file exists (creates it if not)
 
-    if schema_sql_path and schema_sql_path.exists():
-        ddl_sql = schema_sql_path.read_text(encoding="utf-8")
+    if schema_sql_path and schema_sql_path.exists(): # If a schema file path is provided and the file exists
+        ddl_sql = schema_sql_path.read_text(encoding="utf-8") # Reads the SQL DDL statements from the file
     else:
-        ddl_sql = DEFAULT_SCHEMA_SQL
+        ddl_sql = DEFAULT_SCHEMA_SQL # Else, uses the default schema defined in this module
     
-    connection = sqlite3.connect(database_path)
+    connection = sqlite3.connect(database_path) # Opens a connection to the SQLite database (creates the file if it does not exist)
     try:
-        connection.executescript(ddl_sql)
-        connection.commit()
+        connection.executescript(ddl_sql) # Executes the DDL SQL script to create the neows table and any indexes (either from file or default)
+        connection.commit() # Commits the changes to the database
     finally:
-        connection.close()
+        connection.close() # ensures the database connection is closed
 
 
-def read_csv_to_dataframe(csv_path: Path = CSV_OUTPUT,) -> pd.DataFrame:
+def read_csv_to_dataframe(csv_path: Path = CSV_OUTPUT,) -> pd.DataFrame: # Function to read the transformed CSV into a pandas DataFrame for loading into SQLite
     """
     Load a CSV (produced by transform.py) into a pandas DataFrame.
 
@@ -107,21 +110,21 @@ def read_csv_to_dataframe(csv_path: Path = CSV_OUTPUT,) -> pd.DataFrame:
         FileNotFoundError: If the provided CSV path does not exist.
         ValueError: If the CSV is empty or cannot be parsed into a DataFrame.
     """
-    if not csv_path.exists():
-        raise FileNotFoundError(f"CSV file not found: {csv_path}")
+    if not csv_path.exists(): 
+        raise FileNotFoundError(f"CSV file not found: {csv_path}") # Raises an error if the specified CSV file does not exist
 
-    dataframe = pd.read_csv(csv_path)
+    dataframe = pd.read_csv(csv_path) # Reads the CSV file into a pandas DataFrame
     if dataframe.empty:
-        raise ValueError(f"CSV file is empty or could not be parsed: {csv_path}")
+        raise ValueError(f"CSV file is empty or could not be parsed: {csv_path}") # Raises an error if the DataFrame is empty (no data)
     
-    return dataframe
+    return dataframe # Returns the populated DataFrame
 
 
-def delete_date_range(
-        database_path: Path,
-        table_name: str,
-        start_date: str,
-        end_date: str,
+def delete_date_range( # Function to delete rows in the requested date range from the NEoWs table (to enable idempotent reloads)
+        database_path: Path, # Path to the SQLite file
+        table_name: str, # Name of the table to delete the range from (e.g., "neows")
+        start_date: str, # Start date of the range to delete (inclusive, in "YYYY-MM-DD" format)
+        end_date: str, # End date of the range to delete (inclusive, in "YYYY-MM-DD" format)
 ) -> int:
     """
     Delete rows in [start_date, end_date] (inclusive) from the target table 
@@ -136,21 +139,21 @@ def delete_date_range(
     Returns:
         int: Number of rows deleted.
     """
-    with sqlite3.connect(database_path) as connection:
-        cursor = connection.cursor()
-        cursor.execute(
+    with sqlite3.connect(database_path) as connection: # Opens a connection to the SQLite database (ensures it is closed after the block)
+        cursor = connection.cursor() # Creates a cursor object to execute SQL commands 
+        cursor.execute( # Executes a DELETE SQL command to remove rows in the specified date range
             f"""
             DELETE FROM {table_name}
             WHERE close_approach_date BETWEEN ? AND ?
             """,
             (start_date, end_date),
         )
-        deleted_rows = cursor.rowcount if cursor.rowcount is not None else 0
-        connection.commit()
-        return deleted_rows
+        deleted_rows = cursor.rowcount if cursor.rowcount is not None else 0 # Gets the count of rows deleted (if rowcount is None, defaults to 0)
+        connection.commit() # Commits the changes to the database
+        return deleted_rows # Returns the count of rows that were deleted
     
 
-def load_dataframe_to_sqlite(
+def load_dataframe_to_sqlite( # Main function to load a pandas DataFrame into the SQLite database (with optional pre-delete for idempotency)
         dataframe: pd.DataFrame,
         database_path: Path = DB_PATH,
         table_name: str = "neows",
@@ -188,39 +191,39 @@ def load_dataframe_to_sqlite(
         ValueError: If the DataFrame is empty or required columns are missing.
     """
     if dataframe is None or dataframe.empty:
-        raise ValueError("No data to load: the provided DataFrame is empty.")
-    
-    if delete_range_before_insert and ("close_approach_date" not in dataframe.columns):
+        raise ValueError("No data to load: the provided DataFrame is empty.") # Immediately checks if the DataFrame is empty and raises a ValueError if so
+
+    if delete_range_before_insert and ("close_approach_date" not in dataframe.columns): # Ensures the DataFrame has the required column if pre-delete is requested and raises an ValueError if not
         raise ValueError(
-            "DataFrame must contain 'close_approach_date' column to delete date range."
+            "DataFrame must contain 'close_approach_date' column to delete date range." 
         )
     
     #Infer date range from DataFrame if not provided
-    if delete_range_before_insert and (start_date is None or end_date is None):
-        start_date = str(dataframe["close_approach_date"].min())
-        end_date = str(dataframe["close_approach_date"].max())
+    if delete_range_before_insert and (start_date is None or end_date is None): # If pre-delete is requested but start_date or end_date is not provided, infers them from the DataFrame (for testing the module by itself)
+        start_date = str(dataframe["close_approach_date"].min()) # Infers the start date from the minimum close_approach_date in the DataFrame
+        end_date = str(dataframe["close_approach_date"].max()) # Infers the end date from the maximum close_approach_date in the DataFrame
 
-    ensure_database_ready(database_path)
+    ensure_database_ready(database_path) # Calls ensure_database_ready to create the database and neows table if they do not exist
 
     # Optional pre-delete to keep re-runs idempotent
-    if delete_range_before_insert and start_date and end_date:
-        deleted_rows = delete_date_range(database_path, table_name, start_date, end_date)
-        print(f"[load] Pre-delete: removed {deleted_rows} rows in [{start_date} .. {end_date}]")
+    if delete_range_before_insert and start_date and end_date: # if pre-delete is requested and both start_date and end_date are provided (either by the user or inferred from the DataFrame)
+        deleted_rows = delete_date_range(database_path, table_name, start_date, end_date) # Calls delete_date_range to remove existing rows in the specified date range
+        print(f"[load] Pre-delete: removed {deleted_rows} rows in [{start_date} .. {end_date}]") # Prints a message indicating how many rows were deleted in the specified date range
 
-    with sqlite3.connect(database_path) as connection:
-        dataframe.to_sql(
-            name = table_name,
-            con = connection,
-            if_exists = if_exists,
-            index = False,
-            chunksize = chunk_size,
+    with sqlite3.connect(database_path) as connection: # Opens a connection to the SQLite database ('with' ensures it is closed after the block)
+        dataframe.to_sql( 
+            name = table_name, # Name of the target table (the table that will receive and store the data)
+            con = connection, # The active SQLite database connection
+            if_exists = if_exists, # Specifies behaviour if the table already exists (defaults to "append" to add new rows)
+            index = False, # Do not include the DataFrame index column as a database column
+            chunksize = chunk_size, # Optional number of rows to insert per batch (if None, inserts all at once)
             method = None, # Use default executemany
         )
-        connection.commit()
+        connection.commit() # Commits the changes to the database
 
-    return int(len(dataframe))
+    return int(len(dataframe)) # Returns the number of rows written to the database (the length of the DataFrame)
 
-
+# Verifies functionality when running this file directly
 if __name__ == "__main__":
     """
     Script entry point for manual testing.
