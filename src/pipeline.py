@@ -20,12 +20,12 @@ CLI options:
     --live                 Force live mode (use NASA API with DEMO_KEY)
 """
 
-from __future__ import annotations
+from __future__ import annotations # Allows the pipeline to use newer type hint syntax in older Python versions
 
-import os
-import sys
-import argparse
-from typing import List
+import os # Allows the pipeline to interact with os environment variables eg. os.getenv("NASA_API_KEY")
+import sys # Allows the pipeline to interact with the Python runtime environment (eg. sys.exit())
+import argparse # Allows the pipeline to parse command line arguments (eg. --mode feed --start 2025-10-01 --end 2025-10-03)
+from typing import List # Allows use of List in type hints
 
 from .config import CSV_OUTPUT, DB_PATH
 from .fetch import fetch_feed
@@ -37,7 +37,7 @@ from .utils.env import set_demo_mode_for_process, set_live_mode_for_process
 
 def build_arg_parser() -> argparse.ArgumentParser:
     """
-    Construct the argument parser for the pipeline CLI.
+    Construct the argument parser for the pipeline Command Line Interface (CLI).
 
     Returns:
         argparse.ArgumentParser: Configured parser with mode-specific options.
