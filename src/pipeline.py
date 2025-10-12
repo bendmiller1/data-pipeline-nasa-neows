@@ -27,24 +27,25 @@ import sys # Allows the pipeline to interact with the Python runtime environment
 import argparse # Allows the pipeline to parse command line arguments (eg. --mode feed --start 2025-10-01 --end 2025-10-03)
 from typing import List # Allows use of List in type hints
 
-from .config import CSV_OUTPUT, DB_PATH
-from .fetch import fetch_feed
-from .transform import transform_to_dataframe, save_dataframe_to_csv
-from .load import load_dataframe_to_sqlite
-from .utils.dates import validate_date_range
-from .utils.env import set_demo_mode_for_process, set_live_mode_for_process
+from .config import CSV_OUTPUT, DB_PATH # Imports the CSV output path and database path from the config module
+from .fetch import fetch_feed # Imports the fetch_feed function from the fetch module
+from .transform import transform_to_dataframe, save_dataframe_to_csv # Imports transform_to_dataframe and save_dataframe_to_csv functions from the transform module
+from .load import load_dataframe_to_sqlite # Imports the load_dataframe_to_sqlite function from the load module
+from .utils.dates import validate_date_range # Imports the validate_date_range function from the utils.dates module
+from .utils.env import set_demo_mode_for_process, set_live_mode_for_process # Imports functions to set runtime mode for the pipeline (DEMO = Local sample data, LIVE = NASA API)
 
 
-def build_arg_parser() -> argparse.ArgumentParser:
+def build_arg_parser() -> argparse.ArgumentParser: # Function to build and return the CLI argument parser
     """
     Construct the argument parser for the pipeline Command Line Interface (CLI).
 
     Returns:
         argparse.ArgumentParser: Configured parser with mode-specific options.
     """
-    parser = argparse.ArgumentParser(
-        description = "Run the NASA NeoWs data pipeline (fetch, transform, load).",
-        formatter_class = argparse.RawDescriptionHelpFormatter,
+    parser = argparse.ArgumentParser( # Creates a new ArgumentParser object 
+        description = "Run the NASA NeoWs data pipeline (fetch, transform, load).", # Description shown in the help message
+        formatter_class = argparse.RawDescriptionHelpFormatter, # Allows the epilog to be formatted as raw text
+        # Epilog for usage examples (printed when --help is used)
         epilog = """
 Typical usage examples:
   %(prog)s --mode feed --start 2025-10-01 --end 2025-10-03
@@ -55,25 +56,25 @@ Typical usage examples:
     )
 
     # Mode selection
-    parser.add_argument(
+    parser.add_argument( # Creates a new command line argument --mode
         "--mode",
-        choices = ["feed", "browse"],
-        default = "feed",
+        choices = ["feed", "browse"], # Allows only "feed" or "browse" as valid options
+        default = "feed", # Default mode is "feed" (browse is a future feature)
         help = "Pipeline execution mode (default: feed) (browse is a future feature)"
     )
 
     # Feed mode arguments
-    parser.add_argument(
+    parser.add_argument( # Creates a new command line argument --start to specify the start date (inclusive) for feed mode
         "--start",
-        help = "Start date (inclusive) in YYYY-MM-DD format - required for feed mode"
+        help = "Start date (inclusive) in YYYY-MM-DD format - required for feed mode" 
     )
-    parser.add_argument(
+    parser.add_argument( # Creates a new command line argument --end to specify the end date (inclusive) for feed mode
         "--end",
         help = "End date (inclusive) in YYYY-MM-DD format - required for feed mode"
     )
 
     # Browse mode arguments (future feature)
-    parser.add_argument(
+    parser.add_argument( # Will create a new command line argument --pages to specify number of pages to fetch for browse mode (future feature)
         "--pages",
         type = int,
         default = 1,
@@ -81,22 +82,22 @@ Typical usage examples:
     )
 
     # Mode override flags (mutually exclusive)
-    mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument(
+    mode_group = parser.add_mutually_exclusive_group() # Creates a mutually exclusive group for the --demo and --live flags (only one can be specified at a time)
+    mode_group.add_argument( # Creates a new command line argument --demo to force demo mode (local sample data)
         "--demo",
-        action = "store_true",
+        action = "store_true", # If --demo is specified, arg.demo will be set to True; otherwise False
         help = "Force demo mode (use local sample data)"
     )
-    mode_group.add_argument(
+    mode_group.add_argument( # Creates a new command line argument --live to force live mode (NASA API)
         "--live",
-        action = "store_true",
+        action = "store_true", # If --live is specified, arg.live will be set to True; otherwise False
         help = "Force live mode (use NASA API with DEMO_KEY)"
     )
 
-    return parser
+    return parser # Returns the configured ArgumentParser object with all the defined arguments
 
 
-def run_feed_mode(start_date: str, end_date: str) -> int:
+def run_feed_mode(start_date: str, end_date: str) -> int: # Function to run the feed mode ETL pipeline (takes validated user-provided start and date strings as parameters)
     """
     Execute the feed mode ETL pipeline.
     
@@ -107,11 +108,11 @@ def run_feed_mode(start_date: str, end_date: str) -> int:
     Returns:
         int: Exit code (0 = success, non-zero = failure).
     """
-    print(f"[pipeline] Running feed ETL for [{start_date} to {end_date}] (DEMO_MODE={os.getenv('DEMO_MODE', '0')})")
+    print(f"[pipeline] Running feed ETL for [{start_date} to {end_date}] (DEMO_MODE={os.getenv('DEMO_MODE', '0')})") # Prints the start of the feed ETL process with the date range and current mode (DEMO or LIVE) ()
 
     # 1) Fetch
     try:
-        raw_feed_data = fetch_feed(start_date, end_date)
+        raw_feed_data = fetch_feed(start_date, end_date) # Calls fetch_feed to retrieve the raw JSON
         if "near_earth_objects" not in raw_feed_data:
             print("[pipeline][ERROR] Missing 'near_earth_objects' in feed response")
             return 3
