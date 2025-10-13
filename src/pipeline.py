@@ -112,46 +112,46 @@ def run_feed_mode(start_date: str, end_date: str) -> int: # Function to run the 
 
     # 1) Fetch
     try:
-        raw_feed_data = fetch_feed(start_date, end_date) # Calls fetch_feed to retrieve the raw JSON
-        if "near_earth_objects" not in raw_feed_data:
-            print("[pipeline][ERROR] Missing 'near_earth_objects' in feed response")
+        raw_feed_data = fetch_feed(start_date, end_date) # Calls fetch_feed to retrieve the raw JSON data from the NASA NeoWs API or local sample data (based on mode)
+        if "near_earth_objects" not in raw_feed_data: # Validates that the expected key is present in the response
+            print("[pipeline][ERROR] Missing 'near_earth_objects' in feed response") # Prints an error message if the key is missing
             return 3
     except Exception as e:
-        print(f"[pipeline][ERROR][fetch] {type(e).__name__}: {e}")
+        print(f"[pipeline][ERROR][fetch] {type(e).__name__}: {e}") # Catches and prints any exceptions that occur during the fetch stage
         return 3
     
     # 2) Transform + CSV
     try:
-        dataframe = transform_to_dataframe(raw_feed_data)
+        dataframe = transform_to_dataframe(raw_feed_data) # Calls transform_to_dataframe to convert the raw JSON data into a pandas DataFrame
         if dataframe.empty:
-            print("[pipeline][WARN] Transform produced an empty dataset.")
-        save_dataframe_to_csv(dataframe, CSV_OUTPUT)
-        print(f"[pipeline] CSV output written to: {CSV_OUTPUT}")
+            print("[pipeline][WARN] Transform produced an empty dataset.") # If the DataFrame is empty, print a warning
+        save_dataframe_to_csv(dataframe, CSV_OUTPUT) # Else, saves the DataFrame to a CSV file at the configured CSV_OUTPUT path
+        print(f"[pipeline] CSV output written to: {CSV_OUTPUT}") # Prints the path where the CSV file was saved
     except Exception as e:
-        print(f"[pipeline][ERROR][transform] {type(e).__name__}: {e}")
+        print(f"[pipeline][ERROR][transform] {type(e).__name__}: {e}") # catches and prints any exceptions that occur during the transform stage
         return 4
     
     # 3) Load (idempotent for the selected window)
     try:
-        written_rows = load_dataframe_to_sqlite(
-            dataframe = dataframe,
-            database_path = DB_PATH,
-            table_name = "neows",
-            if_exists = "append",
-            delete_range_before_insert = True,
-            start_date = start_date,
-            end_date = end_date,
+        written_rows = load_dataframe_to_sqlite( # Calls load_dataframe_to_sqlite to load the DataFrame into the SQLite database
+            dataframe = dataframe, # DataFrame to load
+            database_path = DB_PATH, # Path to the SQLite database
+            table_name = "neows", # Table name to load data into
+            if_exists = "append", # If the table exists, append new data to the existing table
+            delete_range_before_insert = True, # Delete existing records in the date range before inserting new data (ensures idempotency)
+            start_date = start_date, # User-provided start date for the date range
+            end_date = end_date, # User-provided end date for the date range
         )
-        print(f"[pipeline] Loaded {written_rows} rows into SQLite database at: {DB_PATH}")
+        print(f"[pipeline] Loaded {written_rows} rows into SQLite database at: {DB_PATH}") # Prints the number of rows written to the database and the database path
     except Exception as e:
-        print(f"[pipeline][ERROR][load] {type(e).__name__}: {e}")
+        print(f"[pipeline][ERROR][load] {type(e).__name__}: {e}") # Catches and prints any exceptions that occur during the load stage
         return 5
     
-    print("[pipeline] Feed ETL completed successfully. Ad Astra!")
+    print("[pipeline] Feed ETL completed successfully. Ad Astra!") # Prints a success message at the end of the feed ETL process
     return 0
 
 
-def run_browse_mode(pages: int) -> int:
+def run_browse_mode(pages: int) -> int: # Unimplemented function to run the browse mode ETL pipeline (takes number of pages to fetch as a parameter)
     """
     Execute the browse mode ETL pipeline.
     
@@ -176,7 +176,7 @@ def run_browse_mode(pages: int) -> int:
 
 
 
-def main(argv: List[str] | None = None) -> int:
+def main(argv: List[str] | None = None) -> int: # Main entry point for the pipeline CLI (takes optional command line arguments as a parameter)
     """
     Entry point for the pipeline CLI.
 
@@ -186,15 +186,15 @@ def main(argv: List[str] | None = None) -> int:
     Returns:
         int: Process exit code (0 = success, non-zero = failure stage code).
     """
-    parser = build_arg_parser()
-    args = parser.parse_args(argv)
+    parser = build_arg_parser() # Calls build_arg_parser to create the argument parser
+    args = parser.parse_args(argv) # Parses the command line arguments (or provided argv list)
 
     # Handle mode overrides (--demo or --live flags)
-    if args.demo:
-        set_demo_mode_for_process(True)
+    if args.demo: # If --demo flag is specified,
+        set_demo_mode_for_process(True) # Force demo mode (local sample data)
         print("[pipeline] Forcing demo mode (sample data)")
-    elif args.live:
-        set_live_mode_for_process(True)
+    elif args.live: # If --live flag is specified,
+        set_live_mode_for_process(True) # Force live mode (NASA API)
         print("[pipeline] Forcing live mode (NASA API)")
     # Otherwise, use .env file settings
     
@@ -223,7 +223,7 @@ def main(argv: List[str] | None = None) -> int:
         return 1
     
 
-if __name__ == "__main__":
+if __name__ == "__main__": 
     # Allow: python -m src.pipeline --mode feed --start ... --end ... [--demo]
     #    or: python -m src.pipeline --mode browse --pages N [--demo]  (future feature)
     sys.exit(main())
