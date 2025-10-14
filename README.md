@@ -166,6 +166,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Contact**: [Your LinkedIn Profile] | **Portfolio**: [Your GitHub Profile]
+**Contact**: [LinkedIn Profile](https://linkedin.com/in/bdmillerprofessional) | **Portfolio**: [GitHub Profile](https://github.com/bendmiller1)
 
 *This project demonstrates production-ready ETL pipeline development, API integration, data engineering best practices, and comprehensive testing methodologies.*
