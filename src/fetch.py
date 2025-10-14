@@ -17,6 +17,7 @@ Environment variables (configured in .env):
 # This module handles data retrieval, either from a local sample data file (DEMO_MODE) or via HTTP requests to the NASA NeoWs API (LIVE_MODE).
 
 import json # Allows the program to parse JSON data from files and API responses
+import os # Allows the program to check environment variables dynamically
 import time # Allows the program to implement delays for retry/backoff logic
 from pathlib import Path # Allows the program to work with file system path objects in a platform-independent way
 from typing import Dict, Any # Provides type hinting for dictionaries with string keys and any-type values
@@ -102,7 +103,10 @@ def fetch_feed(start_date: str, end_date: str) -> Dict[str, Any]: # Main functio
         FileNotFoundError: If DEMO_MODE is enabled but the sample file is missing.
         requests.exceptions.RequestException: If a network or API error occurs.
     """
-    if DEMO_MODE: # If DEMO_MODE is True, load data from the local sample file
+    # Check DEMO_MODE dynamically to allow runtime override
+    demo_mode = os.environ.get("DEMO_MODE", "0").lower() in ("1", "true", "yes")
+    
+    if demo_mode: # If DEMO_MODE is True, load data from the local sample file
         # Validate requested dates are within sample range
         if start_date < "2025-01-01" or end_date > "2025-10-31":
             raise ValueError("Demo mode supports dates from 2025-01-01 to 2025-10-31")
