@@ -91,7 +91,15 @@ def transform_to_dataframe(raw_data: Dict[str, Any]) -> pd.DataFrame: # Main fun
         event, with all numeric and categorical fields flattened.
     """
     flat_records = extract_close_approaches(raw_data) # Calls the extract_close_approaches() function to get the List of flattened close approach event dictionaries
-    dataframe = pd.DataFrame(flat_records) # converts the List of dictionaries into a pandas DataFrame (each dictionary becomes one row, with keys as column names)
+    
+    # Define expected column order for consistent DataFrame structure
+    expected_columns = [
+        "id", "name", "close_approach_date", "absolute_magnitude_h",
+        "diameter_min_km", "diameter_max_km", "is_potentially_hazardous",
+        "relative_velocity_kps", "miss_distance_km", "orbiting_body"
+    ]
+    
+    dataframe = pd.DataFrame(flat_records, columns=expected_columns) # converts the List of dictionaries into a pandas DataFrame with explicit column structure
     if not dataframe.empty: # Only sort if DataFrame has data (avoids KeyError on empty DataFrames)
         dataframe.sort_values(by=["close_approach_date"], inplace=True) # Sorts the DataFrame in place based on the "close_approach_date" column in ascending order (earliest dates first)
     return dataframe # Returns the sorted DataFrame
