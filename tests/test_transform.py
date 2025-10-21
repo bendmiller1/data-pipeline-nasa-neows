@@ -4,6 +4,9 @@ Unit tests for transform.py
 
 import pytest
 import test
+import tempfile
+from pathlib import Path
+import pandas as pd
 from src.transform import extract_close_approaches, transform_to_dataframe, save_dataframe_to_csv
 
 
@@ -704,3 +707,118 @@ def test_transform_to_dataframe_edge_cases():
     assert test_record_missing_fields_approach["orbiting_body"] == "Unknown" # Defaulted to "Unknown"
 
 
+class TestSaveDataframeToCSV:
+
+    def setup_method(self):
+        """
+        Set up temporary directory and test DataFrame before each test method.
+       Creates:
+       - Temporary directory for isolated file I/O testing
+       - Test CSV file path within the temporary directory
+       - Sample DataFrame with realistic asteroid data structure
+
+       This ensures each test has a clean environment and consistent test data
+       while preventing interference between test methods and avoiding file system pollution.
+        """
+        self.test_dir = tempfile.TemporaryDirectory()
+        self.test_path = Path(self.test_dir.name) / "test_output.csv"
+        self.test_data = {
+            "id": ["12345", "67890", "11223", "44556"],
+            "name": ["Asteroid A", "Asteroid B", "Asteroid C", "Asteroid D"],
+            "close_approach_date": ["2025-01-01", "2025-01-05", "2025-01-10", "2025-01-15"],
+            "absolute_magnitude_h": [22.1, 19.5, 25.0, 21.3],
+            "diameter_min_km": [0.1, 0.5, 0.05, 0.2],
+            "diameter_max_km": [0.3, 1.2, 0.1, 0.4],
+            "is_potentially_hazardous": [True, True, False, False],
+            "relative_velocity_kps": [5.5, 12.3, 3.2, 7.8],
+            "miss_distance_km": [600000.0, 453000.0, 800000.0, 740000.0],
+            "orbiting_body": ["Earth", "Earth", "Mars", "Venus"]
+        }
+        self.test_dataframe = pd.DataFrame(self.test_data)
+
+    def teardown_method(self):
+        """
+        Clean up temporary directory and files after each test method.
+        Automatically removes:
+        - All temporary files created during test execution
+        - Temporary directory structure and contents
+        - Any residual file system artifacts from testing
+
+        This ensures complete test isolation and prevents accumulation of test files
+        that could interfere with subsequent test runs or consume system resources.
+        """
+        self.test_dir.cleanup()
+
+    def test_basic_functionality(self):
+        """
+        Test that save_dataframe_to_csv correctly writes DataFrame to CSV file.
+    
+        Verifies the function:
+        - Creates CSV file at the specified path location
+        - Ensures parent directories exist before writing
+        - Writes DataFrame content without index column
+        - Preserves data integrity during CSV serialization process
+    
+        This validates the core file I/O functionality that enables data export
+        for analysis tools and external consumption of processed asteroid data.
+        """
+        save_dataframe_to_csv(self.test_dataframe, self.test_path)
+
+        assert self.test_path.exists()
+        assert self.test_path.parent.exists()
+        assert self.test_path.is_file()
+
+        read_back_df = pd.read_csv(self.test_path, dtype={"id": "object"})
+        pd.testing.assert_frame_equal(self.test_dataframe, read_back_df)
+
+    def test_directory_creation(self):
+        """
+        Test that save_dataframe_to_csv creates parent directories when they don't exist.
+    
+        Verifies the function:
+        - Creates parent directory structure using pathlib.Path.mkdir(parents=True)
+        - Handles nested directory paths that don't already exist
+        - Successfully writes file after creating required parent directories
+        - Only creates necessary parent directories (not arbitrary deep structures)
+    
+        This ensures the function can handle output paths in non-existent directories
+        without requiring manual directory creation by calling code.
+        """
+        nested_path = self.test_path.parent / "subdir" / "output.csv"
+        assert not nested_path.parent.exists()
+
+        save_dataframe_to_csv(self.test_dataframe, nested_path)
+
+        assert nested_path.parent.exists()
+        assert nested_path.exists()
+        assert nested_path.is_file()
+
+        read_back_df = pd.read_csv(nested_path, dtype={"id": "object"})
+        pd.testing.assert_frame_equal(self.test_dataframe, read_back_df)
+
+    
+    def test_edge_cases(self):
+        """
+        Test edge cases for save_dataframe_to_csv function.
+    
+        Verifies the function:
+        - Handles empty DataFrames gracefully without raising exceptions
+        - Creates CSV files with correct headers even when no data is present
+        - Overwrites existing files correctly when called multiple times
+        - Handles DataFrames with unusual data types (None, NaN values)
+        - Maintains consistent file structure for downstream processing tools
+        - Provides predictable behavior for edge conditions in the ETL pipeline
+
+        This ensures the function is robust across various real-world scenarios
+        that could occur during ETL processing.
+        """
+        # Test Case 1: Empty DataFrame with correct column structure
+        empty_columns = [
+            "id", "name", "close_approach_date", "absolute_magnitude_h",
+            "diameter_min_km", "diameter_max_km", "is_potentially_hazardous",
+            "relative_velocity_kps", "miss_distance_km", "orbiting_body"
+        ]
+        empty_dataframe = pd.DataFrame(columns=empty_columns)
+        empty_csv_path = self.test_path.parent / "empty_output.csv"
+
+        
