@@ -2,6 +2,8 @@
 Unit tests for transform.py
 """
 
+from os import read
+from numpy import save
 import pytest
 import test
 import tempfile
@@ -812,6 +814,7 @@ class TestSaveDataframeToCSV:
         This ensures the function is robust across various real-world scenarios
         that could occur during ETL processing.
         """
+
         # Test Case 1: Empty DataFrame with correct column structure
         empty_columns = [
             "id", "name", "close_approach_date", "absolute_magnitude_h",
@@ -821,4 +824,75 @@ class TestSaveDataframeToCSV:
         empty_dataframe = pd.DataFrame(columns=empty_columns)
         empty_csv_path = self.test_path.parent / "empty_output.csv"
 
-        
+        save_dataframe_to_csv(empty_dataframe, empty_csv_path)
+
+        assert empty_csv_path.exists()
+        assert empty_csv_path.is_file()
+
+        read_back_empty_df = pd.read_csv(empty_csv_path, dtype={"id": "object"})
+        assert list(read_back_empty_df.columns) == empty_columns
+        assert len(read_back_empty_df) == 0
+        assert read_back_empty_df.empty
+
+
+        # Test Case 2: Overwriting existing file
+        overwrite_path = self.test_path.parent / "overwrite_output.csv"
+
+        # First call to create the file
+        save_dataframe_to_csv(self.test_dataframe, overwrite_path)
+        first_size = overwrite_path.stat().st_size
+
+        # Second call to overwrite the file
+        overwrite_data = {
+            "id": ["1", "2", "3"],
+            "name": ["Asteroid A", "Asteroid B", "Asteroid C"],
+            "close_approach_date": ["2023-01-01", "2023-01-02", "2023-01-03"],
+            "absolute_magnitude_h": [22.5, 23.1, 21.8],
+            "diameter_min_km": [0.5, 0.6, 0.4],
+            "diameter_max_km": [1.0, 1.2, 0.8],
+            "is_potentially_hazardous": [False, True, False],
+            "relative_velocity_kps": [12.3, 15.4, 10.1],
+            "miss_distance_km": [100000.0, 200000.0, 150000.0],
+            "orbiting_body": ["Earth", "Mars", "Venus"]
+        }
+        overwrite_dataframe = pd.DataFrame(overwrite_data)
+        save_dataframe_to_csv(overwrite_dataframe, overwrite_path)
+
+        second_size = overwrite_path.stat().st_size
+        assert second_size != first_size  # File size should change after overwrite
+
+        # Verify content matches the new DataFrame
+        read_back_overwrite_df = pd.read_csv(overwrite_path, dtype={"id": "object"})
+        pd.testing.assert_frame_equal(overwrite_dataframe, read_back_overwrite_df)
+
+
+        # Test Case 3: DataFrame with None/NaN values
+        import numpy as np
+        mixed_missing_data = {
+            "id": ["12345", None, "67890", "11223"],
+            "name": ["Asteroid A", "Asteroid B", None, "Asteroid D"],
+            "close_approach_date": ["2025-01-01", "2025-01-02", "2025-01-03", "2025-01-04"],
+            "absolute_magnitude_h": [22.1, None, np.nan, 25.0],
+            "diameter_min_km": [0.1, 0.2, None, np.nan],
+            "diameter_max_km": [0.3, np.nan, 0.5, None],
+            "is_potentially_hazardous": [True, False, None, True],
+            "relative_velocity_kps": [5.5, None, np.nan, 7.8],
+            "miss_distance_km": [600000.0, np.nan, None, 800000.0],
+            "orbiting_body": ["Earth", None, "Earth", "Mars"]
+        }
+        mixed_missing_dataframe = pd.DataFrame(mixed_missing_data)
+        mixed_missing_csv_path = self.test_path.parent / "mixed_missing_output.csv"
+
+        # Should handle both None and NaN values gracefully
+        save_dataframe_to_csv(mixed_missing_dataframe, mixed_missing_csv_path)
+
+        assert mixed_missing_csv_path.exists()
+        assert mixed_missing_csv_path.is_file()
+
+        # Verify data structure is maintained (None and NaN become empty strings or handled by pandas)
+        read_back_mixed_df = pd.read_csv(mixed_missing_csv_path, dtype={"id": "object"})
+        assert len(read_back_mixed_df) == 4 # Should have 4 records
+        assert read_back_mixed_df.shape[1] == 10 # Should have 10 columns
+
+        # Verify that the file can be read back successfully (main requirement)
+        assert list(read_back_mixed_df.columns) == list(mixed_missing_dataframe.columns)
