@@ -714,6 +714,355 @@ def test_transform_to_dataframe_edge_cases():
     assert test_record_missing_fields_approach["orbiting_body"] == "Unknown" # Defaulted to "Unknown"
 
 
+class TestTransformToDataframe:
+    """
+    Unit tests for the transform_to_dataframe function.
+    
+    Tests DataFrame conversion logic that transforms flattened record
+    dictionaries into structured tabular data suitable for analysis and CSV export.
+    """
+
+    def test_basic_functionality(self):
+        """
+        Test that transform_to_dataframe correctly converts extracted records to DataFrame.
+        
+        Verifies the function:
+        - Returns a proper pandas DataFrame object
+        - Creates correct DataFrame structure (shape, columns, column order)
+        - Preserves all data integrity during list-to-DataFrame conversion
+        - Maintains correct data types for all fields
+        
+        This validates the core DataFrame conversion logic that transforms
+        flattened record dictionaries into structured tabular data suitable
+        for analysis and CSV export.
+        """
+        import pandas as pd
+
+        # Test data for a single asteroid with one close approach event
+        test_data = {
+            "near_earth_objects": {
+                "2025-01-01": [
+                    {
+                        "id": "12345",
+                        "name": "Test Asteroid",
+                        "absolute_magnitude_h": 22.1,
+                        "is_potentially_hazardous_asteroid": True,
+                        "estimated_diameter": {
+                            "kilometers": {
+                                "estimated_diameter_min": 0.1,
+                                "estimated_diameter_max": 0.3
+                            }
+                        },
+                        "close_approach_data": [
+                            {
+                                "close_approach_date": "2025-01-01",
+                                "relative_velocity": {
+                                    "kilometers_per_second": "5.5"
+                                },
+                                "miss_distance": {
+                                    "kilometers": "750000"
+                                },
+                                "orbiting_body": "Earth"
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+        test_dataframe = transform_to_dataframe(test_data)
+        assert isinstance(test_dataframe, pd.DataFrame) # Check that the result is a DataFrame
+        assert test_dataframe.shape == (1, 10)  # Check for correct shape: 1 record, 10 columns
+        assert list(test_dataframe.columns) == [ # Check for correct columns
+            "id",
+            "name",
+            "close_approach_date",
+            "absolute_magnitude_h",
+            "diameter_min_km",
+            "diameter_max_km",
+            "is_potentially_hazardous",
+            "relative_velocity_kps",
+            "miss_distance_km",
+            "orbiting_body"
+        ]
+
+        test_record = test_dataframe.iloc[0] # Get the first (and only) record and check values
+        assert test_record["id"] == "12345"
+        assert test_record["name"] == "Test Asteroid"
+        assert test_record["close_approach_date"] == "2025-01-01"
+        assert test_record["absolute_magnitude_h"] == 22.1
+        assert test_record["diameter_min_km"] == 0.1
+        assert test_record["diameter_max_km"] == 0.3
+        assert test_record["is_potentially_hazardous"] == True
+        assert test_record["relative_velocity_kps"] == 5.5
+        assert test_record["miss_distance_km"] == 750000.0
+        assert test_record["orbiting_body"] == "Earth"
+
+    def test_sorting(self):
+        """
+        Test that transform_to_dataframe correctly sorts DataFrame by close_approach_date.
+        
+        Verifies the function:
+        - Sorts DataFrame rows in ascending chronological order (earliest dates first)
+        - Maintains data integrity during the sorting process
+        - Handles multiple dates across multiple asteroids correctly
+        - Produces consistent ordering regardless of input data arrangement
+        
+        This validates the sorting logic that ensures chronological data presentation
+        for time-series analysis and consistent CSV output formatting.
+        """
+        import pandas as pd
+
+        # Test data with multiple asteroids and approach dates in unsorted order
+        test_data = {
+            "near_earth_objects": {
+                "2025-01-01": [
+                    {
+                        "id": "11223",
+                        "name": "Test Asteroid 3",
+                        "absolute_magnitude_h": 25.0,
+                        "is_potentially_hazardous_asteroid": False,
+                        "estimated_diameter": {
+                            "kilometers": {
+                                "estimated_diameter_min": 0.05,
+                                "estimated_diameter_max": 0.1
+                            }
+                        },
+                        "close_approach_data": [
+                            {
+                                "close_approach_date": "2025-01-26",
+                                "relative_velocity": {
+                                    "kilometers_per_second": "3.2"
+                                },
+                                "miss_distance": {
+                                    "kilometers": "500000"
+                                },
+                                "orbiting_body": "Earth"
+                            },
+                            {
+                                "close_approach_date": "2025-02-10",
+                                "relative_velocity": {
+                                    "kilometers_per_second": "3.5"
+                                },
+                                "miss_distance": {
+                                    "kilometers": "450000"
+                                },
+                                "orbiting_body": "Earth"
+                            }
+                        ]
+                    },
+                    {
+                        "id": "12345",
+                        "name": "Test Asteroid 1",
+                        "absolute_magnitude_h": 22.1,
+                        "is_potentially_hazardous_asteroid": True,
+                        "estimated_diameter": {
+                            "kilometers": {
+                                "estimated_diameter_min": 0.1,
+                                "estimated_diameter_max": 0.3
+                            }
+                        },
+                        "close_approach_data": [
+                            {
+                                "close_approach_date": "2025-01-01",
+                                "relative_velocity": {
+                                    "kilometers_per_second": "5.5"
+                                },
+                                "miss_distance": {
+                                    "kilometers": "750000"
+                                },
+                                "orbiting_body": "Earth"
+                            },
+                            {
+                                "close_approach_date": "2025-01-21",
+                                "relative_velocity": {
+                                    "kilometers_per_second": "6.0"
+                                },
+                                "miss_distance": {
+                                    "kilometers": "800000"
+                                },
+                                "orbiting_body": "Earth"
+                            }
+                        ]
+                    },
+                    {
+                        "id": "67890",
+                        "name": "Test Asteroid 2",
+                        "absolute_magnitude_h": 19.5,
+                        "is_potentially_hazardous_asteroid": False,
+                        "estimated_diameter": {
+                            "kilometers": {
+                                "estimated_diameter_min": 0.5,
+                                "estimated_diameter_max": 1.2
+                            }
+                        },
+                        "close_approach_data": [
+                            {
+                                "close_approach_date": "2025-01-03",
+                                "relative_velocity": {
+                                    "kilometers_per_second": "12.3"
+                                },
+                                "miss_distance": {
+                                    "kilometers": "1500000"
+                                },
+                                "orbiting_body": "Mars"
+                            },
+                            {
+                                "close_approach_date": "2025-01-15",
+                                "relative_velocity": {
+                                    "kilometers_per_second": "11.8"
+                                },
+                                "miss_distance": {
+                                    "kilometers": "1400000"
+                                },
+                                "orbiting_body": "Mars"
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+        test_dataframe = transform_to_dataframe(test_data)
+        assert isinstance(test_dataframe, pd.DataFrame)
+        assert test_dataframe.shape == (6, 10)  # 6 records, 10 columns
+        expected_dates_order = [ # Expected sorted order of approach dates from test data
+            "2025-01-01",
+            "2025-01-03",
+            "2025-01-15",
+            "2025-01-21",
+            "2025-01-26",
+            "2025-02-10"
+        ]
+        actual_dates_order = test_dataframe["close_approach_date"].tolist() # Extract actual order of approach dates from DataFrame
+        assert actual_dates_order == expected_dates_order
+
+    def test_edge_cases(self):
+        """
+        Test that transform_to_dataframe handles edge cases and malformed data gracefully.
+        
+        Verifies the function:
+        - Returns proper DataFrame structure (0, 10) for empty input data
+        - Maintains consistent column schema even with no records
+        - Handles missing asteroid fields by setting None values appropriately
+        - Processes missing approach fields using correct default values (0.0, "Unknown")
+        - Preserves data integrity for fields that are present
+        
+        This validates DataFrame conversion resilience to incomplete API responses
+        and ensures consistent tabular structure regardless of input data quality.
+        """
+        import pandas as pd
+
+        # Test Case 1: Empty data
+        test_data_empty = {"near_earth_objects": {}}
+        test_dataframe_empty = transform_to_dataframe(test_data_empty)
+        assert isinstance(test_dataframe_empty, pd.DataFrame)
+        assert test_dataframe_empty.empty  # DataFrame should be empty
+        assert test_dataframe_empty.shape == (0, 10)  # Should have 0 rows and 10 columns
+        assert list(test_dataframe_empty.columns) == [
+            "id",
+            "name",
+            "close_approach_date",
+            "absolute_magnitude_h",
+            "diameter_min_km",
+            "diameter_max_km",
+            "is_potentially_hazardous",
+            "relative_velocity_kps",
+            "miss_distance_km",
+            "orbiting_body"
+        ]
+
+        # Test Case 2: Data with missing asteroid fields
+        test_data_missing_fields_asteroid = {
+            "near_earth_objects": {
+                "2025-01-01": [
+                    {
+                        # "id" key is missing
+                        "name": "Test Asteroid",
+                        # "absolute_magnitude_h" key is missing
+                        # "is_potentially_hazardous_asteroid" key is missing
+                        "estimated_diameter": {
+                            "kilometers": {
+                                # "estimated_diameter_min" key is missing
+                                "estimated_diameter_max": 0.1
+                            }
+                        },
+                        "close_approach_data": [
+                            {
+                                "close_approach_date": "2025-01-01",
+                                "relative_velocity": {
+                                    "kilometers_per_second": "5.5"
+                                },
+                                "miss_distance": {
+                                    "kilometers": "750000"
+                                },
+                                "orbiting_body": "Earth"
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+        test_dataframe_missing_fields_asteroid = transform_to_dataframe(test_data_missing_fields_asteroid)
+        assert isinstance(test_dataframe_missing_fields_asteroid, pd.DataFrame)
+        assert test_dataframe_missing_fields_asteroid.shape == (1, 10)  # 1 record, 10 columns
+        test_record_missing_fields_asteroid = test_dataframe_missing_fields_asteroid.iloc[0]
+        assert test_record_missing_fields_asteroid["id"] == None
+        assert test_record_missing_fields_asteroid["name"] == "Test Asteroid"
+        assert test_record_missing_fields_asteroid["absolute_magnitude_h"] == None
+        assert test_record_missing_fields_asteroid["is_potentially_hazardous"] == None
+        assert test_record_missing_fields_asteroid["diameter_min_km"] == None
+        assert test_record_missing_fields_asteroid["diameter_max_km"] == 0.1
+        assert test_record_missing_fields_asteroid["close_approach_date"] == "2025-01-01"
+        assert test_record_missing_fields_asteroid["relative_velocity_kps"] == 5.5
+        assert test_record_missing_fields_asteroid["miss_distance_km"] == 750000.0
+        assert test_record_missing_fields_asteroid["orbiting_body"] == "Earth"
+
+        # Test Case 3: Data with missing approach fields
+        test_data_missing_fields_approach = {
+            "near_earth_objects": {
+                "2025-01-01": [
+                    {
+                        "id": "12345",
+                        "name": "Test Asteroid",
+                        "absolute_magnitude_h": 25.0,
+                        "is_potentially_hazardous_asteroid": False,
+                        "estimated_diameter": {
+                            "kilometers": {
+                                "estimated_diameter_min": 0.05,
+                                "estimated_diameter_max": 0.1
+                            }
+                        },
+                        "close_approach_data": [
+                            {
+                                "close_approach_date": "2025-01-01",
+                                "relative_velocity": {
+                                    # "kilometers_per_second" key is missing
+                                },
+                                "miss_distance": {
+                                    # "kilometers" key is missing
+                                },
+                                # "orbiting_body" key is missing
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+        test_dataframe_missing_fields_approach = transform_to_dataframe(test_data_missing_fields_approach)
+        assert isinstance(test_dataframe_missing_fields_approach, pd.DataFrame)
+        assert test_dataframe_missing_fields_approach.shape == (1, 10) # 1 record, 10 columns
+        test_record_missing_fields_approach = test_dataframe_missing_fields_approach.iloc[0]
+        assert test_record_missing_fields_approach["id"] == "12345"
+        assert test_record_missing_fields_approach["name"] == "Test Asteroid"
+        assert test_record_missing_fields_approach["absolute_magnitude_h"] == 25.0
+        assert test_record_missing_fields_approach["is_potentially_hazardous"] == False
+        assert test_record_missing_fields_approach["diameter_min_km"] == 0.05
+        assert test_record_missing_fields_approach["diameter_max_km"] == 0.1
+        assert test_record_missing_fields_approach["close_approach_date"] == "2025-01-01"
+        assert test_record_missing_fields_approach["relative_velocity_kps"] == 0.0 # Defaulted to 0.0
+        assert test_record_missing_fields_approach["miss_distance_km"] == 0.0 # Defaulted to 0.0
+        assert test_record_missing_fields_approach["orbiting_body"] == "Unknown" # Defaulted to "Unknown"
+
+
 class TestSaveDataframeToCSV:
 
     def setup_method(self):
