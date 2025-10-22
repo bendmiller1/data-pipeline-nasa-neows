@@ -1,5 +1,25 @@
 """
-Unit tests for transform.py
+Comprehensive unit tests for the transform.py module.
+
+This test suite provides complete coverage for the core ETL transformation functions
+that process NASA NEOWs (Near Earth Object Web Service) data from raw JSON format
+into structured tabular data suitable for analysis and storage.
+
+Test Classes:
+    TestExtractCloseApproaches: Tests JSON flattening and record extraction logic
+    TestTransformToDataframe: Tests DataFrame conversion and data validation  
+    TestSaveDataframeToCSV: Tests file I/O operations with comprehensive edge cases
+
+Coverage:
+    - Basic functionality validation for all transformation steps
+    - Edge case handling (empty data, missing fields, malformed input)
+    - Data integrity verification through round-trip testing
+    - File system operations with temporary directory isolation
+    - Sorting and data structure consistency validation
+
+The test suite uses pytest class-based organization with setup/teardown methods
+for maintainable, professional-quality test code that validates the complete
+ETL transformation pipeline for asteroid close approach data.
 """
 
 from os import read
@@ -721,17 +741,23 @@ class TestTransformToDataframe:
 
 
 class TestSaveDataframeToCSV:
+    """
+    Unit tests for the save_dataframe_to_csv function.
+    
+    Tests the final stage of the ETL pipeline that exports processed DataFrame
+    data to CSV files for external consumption and analysis.
+    """
 
     def setup_method(self):
         """
         Set up temporary directory and test DataFrame before each test method.
-       Creates:
-       - Temporary directory for isolated file I/O testing
-       - Test CSV file path within the temporary directory
-       - Sample DataFrame with realistic asteroid data structure
+        Creates:
+        - Temporary directory for isolated file I/O testing
+        - Test CSV file path within the temporary directory
+        - Sample DataFrame with realistic asteroid data structure
 
-       This ensures each test has a clean environment and consistent test data
-       while preventing interference between test methods and avoiding file system pollution.
+        This ensures each test has a clean environment and consistent test data
+        while preventing interference between test methods and avoiding file system pollution.
         """
         self.test_dir = tempfile.TemporaryDirectory()
         self.test_path = Path(self.test_dir.name) / "test_output.csv"
