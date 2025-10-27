@@ -396,7 +396,7 @@ class TestTransformToDataframe:
     Unit tests for the transform_to_dataframe function.
     
     Tests DataFrame conversion logic that transforms flattened record
-    dictionaries into structured tabular data suitable for analysis and CSV export.
+    dictionaries into structured tabular data suitable for and CSV export and database storage.
     """
 
     def test_basic_functionality(self):
@@ -745,7 +745,7 @@ class TestSaveDataframeToCSV:
     Unit tests for the save_dataframe_to_csv function.
     
     Tests the final stage of the ETL pipeline that exports processed DataFrame
-    data to CSV files for external consumption and analysis.
+    data to CSV files for database storage.
     """
 
     def setup_method(self):
