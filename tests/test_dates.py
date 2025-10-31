@@ -16,6 +16,18 @@ class TestParseDate:
     ])
     
     def test_valid_dates(self, input_date, expected_year, expected_month, expected_day):
+        """
+        Test that parse_date correctly converts valid ISO date strings to datetime objects.
+        
+        Verifies the function:
+        - Accepts properly formatted "YYYY-MM-DD" date strings
+        - Returns datetime objects with correct year, month, and day values
+        - Handles edge cases like leap year dates (2024-02-29)
+        - Maintains data integrity during string-to-datetime conversion
+        
+        This validates the core happy path functionality that enables reliable
+        date parsing for user inputs and API request formatting.
+        """
         valid_date_result = parse_date(input_date)
         assert valid_date_result.year == expected_year
         assert valid_date_result.month == expected_month
@@ -31,5 +43,17 @@ class TestParseDate:
     ])
 
     def test_invalid_dates(self, invalid_date):
+        """
+        Test that parse_date raises ValueError for invalid date strings.
+        
+        Verifies the function:
+        - Rejects improperly formatted date strings (wrong separators, etc.)
+        - Handles impossible dates (invalid days, months, years)
+        - Raises ValueError with descriptive error messages
+        - Provides consistent error handling for edge cases like empty strings
+        
+        This validates robust error handling that prevents the system from
+        processing malformed date inputs and provides clear feedback to users.
+        """
         with pytest.raises(ValueError):
             parse_date(invalid_date)
