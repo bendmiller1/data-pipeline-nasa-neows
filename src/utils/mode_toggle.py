@@ -1,11 +1,11 @@
 """
-Environment utilities for the NASA NeoWs Data Pipeline.
+Mode toggle utilities for the NASA NeoWs Data Pipeline.
 
-Provides helpers to adjust runtime environment flags (e.g., DEMO mode)
+Provides helpers to adjust runtime mode flags (demo vs live)
 without modifying the persistent .env file.
 
 Typical usage example:
-    from src.utils.env import set_demo_mode_for_process
+    from src.utils.mode_toggle import set_demo_mode_for_process
     set_demo_mode_for_process(True)
 """
 # This module allows the user to set the pipeline mode (demo vs live) at runtime without changing the .env file

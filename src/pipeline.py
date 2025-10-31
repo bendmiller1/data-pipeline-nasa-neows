@@ -32,7 +32,7 @@ from .fetch import fetch_feed # Imports the fetch_feed function from the fetch m
 from .transform import transform_to_dataframe, save_dataframe_to_csv # Imports transform_to_dataframe and save_dataframe_to_csv functions from the transform module
 from .load import load_dataframe_to_sqlite # Imports the load_dataframe_to_sqlite function from the load module
 from .utils.dates import validate_date_range # Imports the validate_date_range function from the utils.dates module
-from .utils.env import set_demo_mode_for_process, set_live_mode_for_process # Imports functions to set runtime mode for the pipeline (DEMO = Local sample data, LIVE = NASA API)
+from .utils.mode_toggle import set_demo_mode_for_process, set_live_mode_for_process # Imports functions to set runtime mode for the pipeline (DEMO = Local sample data, LIVE = NASA API)
 
 
 def build_arg_parser() -> argparse.ArgumentParser: # Function to build and return the CLI argument parser
