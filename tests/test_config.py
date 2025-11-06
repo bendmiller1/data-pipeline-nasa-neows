@@ -249,3 +249,104 @@ class TestPathConfiguration:
         assert "neo/rest/v1" in config.NASA_API_BASE_URL
 
 
+class TestModuleReloadBehavior:
+    """
+    Unit tests for configuration module reload behavior with environment changes.
+    
+    Tests how the config module responds to environment variable modifications
+    when reloaded, ensuring dynamic configuration updates work correctly.
+    """
+
+    def setup_method(self):
+        """
+        Preserve original environment state before each test method execution.
+        
+        Captures current environment variables to enable:
+        - Complete restoration of pre-test environment state
+        - Safe testing of configuration changes without permanent modifications
+        - Proper isolation while respecting original system state
+        - Module reloading with different configuration scenarios
+        """
+        self.original_demo_mode = os.environ.get("DEMO_MODE")
+        self.original_api_key = os.environ.get("NASA_API_KEY")
+    
+    def teardown_method(self):
+        """
+        Restore original environment state after each test method execution.
+        
+        Restores all environment variables and reloads config module:
+        - Removes variables if they were not originally set
+        - Restores original values if they existed before testing
+        - Reloads config module to reflect original environment state
+        - Ensures no permanent configuration modifications from tests
+        """
+        if self.original_demo_mode is None:
+            os.environ.pop("DEMO_MODE", None)
+        else:
+            os.environ["DEMO_MODE"] = self.original_demo_mode
+            
+        if self.original_api_key is None:
+            os.environ.pop("NASA_API_KEY", None)
+        else:
+            os.environ["NASA_API_KEY"] = self.original_api_key
+            
+        importlib.reload(config)
+
+    def test_demo_mode_changes_on_reload(self):
+        """
+        Test that DEMO_MODE configuration updates when environment changes and module reloads.
+        
+        Verifies the reload behavior:
+        - Initial configuration reflects current environment state
+        - Environment variable changes take effect after module reload
+        - Multiple reload cycles work correctly with different values
+        - Configuration stays consistent with environment variables
+        
+        This validates that configuration can be dynamically updated during runtime
+        by modifying environment variables and reloading the config module.
+        """
+        # Start with demo mode disabled
+        os.environ["DEMO_MODE"] = "0"
+        importlib.reload(config)
+        assert config.DEMO_MODE == False
+        
+        # Change to demo mode enabled and reload
+        os.environ["DEMO_MODE"] = "1"
+        importlib.reload(config)
+        assert config.DEMO_MODE == True
+        
+        # Change back to disabled and reload
+        os.environ["DEMO_MODE"] = "false"
+        importlib.reload(config)
+        assert config.DEMO_MODE == False
+
+    def test_api_key_changes_on_reload(self):
+        """
+        Test that NASA_API_KEY configuration updates when environment changes and module reloads.
+        
+        Verifies the reload behavior:
+        - Falls back to DEMO_KEY when environment variable is removed
+        - Uses custom API key when environment variable is set
+        - Multiple reload cycles work correctly with different key values
+        - No exposure of actual API key values in test assertions
+        
+        This validates that API key configuration can be dynamically updated
+        for different deployment scenarios or credential rotation.
+        """
+        # Start with no API key (should use DEMO_KEY)
+        os.environ.pop("NASA_API_KEY", None)
+        importlib.reload(config)
+        assert config.NASA_API_KEY == "DEMO_KEY"
+        
+        # Set custom API key and reload
+        test_key = "test_custom_key_67890"
+        os.environ["NASA_API_KEY"] = test_key
+        importlib.reload(config)
+        assert config.NASA_API_KEY == test_key
+        
+        # Remove API key again and reload (back to fallback)
+        os.environ.pop("NASA_API_KEY", None)
+        importlib.reload(config)
+        assert config.NASA_API_KEY == "DEMO_KEY"
+
+
