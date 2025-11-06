@@ -169,3 +169,83 @@ class TestApiKeyConfiguration:
         assert config.NASA_API_KEY != "DEMO_KEY"
 
 
+class TestPathConfiguration:
+    """
+    Unit tests for directory path configuration and calculations.
+    
+    Tests the file system path setup that determines where the pipeline
+    stores data, sample files, and output results relative to the project root.
+    """
+
+    def test_root_directory_calculation(self):
+        """
+        Test that ROOT_DIR correctly points to the project root directory.
+        
+        Verifies the path calculation:
+        - Uses Path(__file__).resolve().parents[1] to go up from src/config.py
+        - Results in the actual project root directory
+        - Provides absolute path for reliable file operations
+        - Maintains correct relationship to config.py location
+        
+        This validates the foundation path that all other directories depend on.
+        """
+        # ROOT_DIR should be the parent of the src directory
+        expected_root = config.Path(__file__).resolve().parents[1]  # tests/ -> project root
+        assert config.ROOT_DIR == expected_root
+        assert config.ROOT_DIR.is_absolute()
+        assert config.ROOT_DIR.exists()
+
+    def test_data_directory_paths(self):
+        """
+        Test that data directory paths are correctly calculated relative to ROOT_DIR.
+        
+        Verifies the directory structure:
+        - DATA_DIR points to ROOT_DIR / "data"
+        - PROCESSED_DIR points to DATA_DIR / "processed" 
+        - WAREHOUSE_DIR points to DATA_DIR / "warehouse"
+        - SAMPLE_DATA_DIR points to ROOT_DIR / "sample_data"
+        
+        This validates the complete data directory hierarchy used by the pipeline.
+        """
+        assert config.DATA_DIR == config.ROOT_DIR / "data"
+        assert config.PROCESSED_DIR == config.DATA_DIR / "processed"
+        assert config.WAREHOUSE_DIR == config.DATA_DIR / "warehouse"
+        assert config.SAMPLE_DATA_DIR == config.ROOT_DIR / "sample_data"
+
+    def test_output_file_paths(self):
+        """
+        Test that output file paths are correctly calculated within data directories.
+        
+        Verifies the file path construction:
+        - CSV_OUTPUT points to PROCESSED_DIR / "neows_latest.csv"
+        - DB_PATH points to WAREHOUSE_DIR / "neows_data.db"
+        - Paths use proper Path object operations for cross-platform compatibility
+        - File extensions and names match expected pipeline outputs
+        
+        This validates the specific file paths where pipeline results are stored.
+        """
+        assert config.CSV_OUTPUT == config.PROCESSED_DIR / "neows_latest.csv"
+        assert config.DB_PATH == config.WAREHOUSE_DIR / "neows_data.db"
+        
+        # Verify these are Path objects, not strings
+        assert isinstance(config.CSV_OUTPUT, config.Path)
+        assert isinstance(config.DB_PATH, config.Path)
+
+    def test_api_base_url_constant(self):
+        """
+        Test that NASA API base URL is correctly configured.
+        
+        Verifies the API configuration:
+        - NASA_API_BASE_URL contains the correct NASA NEOWs endpoint
+        - Uses HTTPS protocol for secure communication
+        - Points to the correct API version (v1)
+        - Maintains expected string format for HTTP requests
+        
+        This validates the API endpoint configuration for live data fetching.
+        """
+        expected_url = "https://api.nasa.gov/neo/rest/v1"
+        assert config.NASA_API_BASE_URL == expected_url
+        assert config.NASA_API_BASE_URL.startswith("https://")
+        assert "neo/rest/v1" in config.NASA_API_BASE_URL
+
+
