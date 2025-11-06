@@ -94,3 +94,78 @@ class TestDemoModeParsingLogic:
         importlib.reload(config)
         assert config.DEMO_MODE == expected_result
 
+
+class TestApiKeyConfiguration:
+    """
+    Unit tests for NASA API key configuration and fallback logic.
+    
+    Tests the API key loading mechanism that handles environment variables
+    with secure fallback to NASA's public DEMO_KEY for testing scenarios.
+    """
+
+    def setup_method(self):
+        """
+        Preserve original environment state before each test method execution.
+        
+        Captures the current NASA_API_KEY environment variable value to enable:
+        - Complete restoration of pre-test environment state
+        - Safe testing without exposing actual API keys in test output
+        - Proper isolation while respecting original system state
+        - Module reloading with different API key configurations
+        """
+        self.original_api_key = os.environ.get("NASA_API_KEY")
+    
+    def teardown_method(self):
+        """
+        Restore original environment state after each test method execution.
+        
+        Restores NASA_API_KEY environment variable and reloads config module:
+        - Removes NASA_API_KEY if it was not originally set
+        - Restores original value if it existed before testing
+        - Reloads config module to reflect original API key state
+        - Ensures no permanent configuration modifications from tests
+        """
+        if self.original_api_key is None:
+            os.environ.pop("NASA_API_KEY", None)
+        else:
+            os.environ["NASA_API_KEY"] = self.original_api_key
+        importlib.reload(config)
+
+    def test_api_key_fallback_to_demo_key(self):
+        """
+        Test that NASA_API_KEY falls back to DEMO_KEY when not set in environment.
+        
+        Verifies the fallback logic:
+        - Uses "DEMO_KEY" when NASA_API_KEY environment variable is not set
+        - Provides safe default for testing and development scenarios
+        - Ensures pipeline can run without requiring actual NASA API credentials
+        - Maintains expected string value for API key configuration
+        
+        This validates the core fallback mechanism that enables demo mode
+        operation without exposing or requiring real API credentials.
+        """
+        os.environ.pop("NASA_API_KEY", None)
+        importlib.reload(config)
+        assert config.NASA_API_KEY == "DEMO_KEY"
+
+    def test_api_key_uses_environment_value(self):
+        """
+        Test that NASA_API_KEY uses actual environment value when provided.
+        
+        Verifies the environment loading:
+        - Reads NASA_API_KEY from environment when present
+        - Does not expose actual key values in test assertions
+        - Maintains proper environment variable precedence
+        - Validates configuration loading without security risks
+        
+        This validates that real API keys are properly loaded from environment
+        while ensuring test safety and no credential exposure.
+        """
+        test_key = "test_fake_api_key_12345"
+        os.environ["NASA_API_KEY"] = test_key
+        importlib.reload(config)
+        # Verify key is loaded but don't expose actual value
+        assert config.NASA_API_KEY == test_key
+        assert config.NASA_API_KEY != "DEMO_KEY"
+
+
