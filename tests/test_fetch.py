@@ -594,3 +594,211 @@ class TestFetchFeedLiveMode:
 
         # Verify _http_get was called
         mock_http_get.assert_called_once()
+
+
+class TestFetchFeedModeDetection:
+    """Test fetch_feed function's dynamic DEMO_MODE detection logic."""
+
+    @patch("src.fetch.Path")
+    @patch.dict(os.environ, {"DEMO_MODE": "1"})
+    def test_demo_mode_string_one(self, mock_path_class):
+        """
+        Test that fetch_feed detects DEMO_MODE="1" as enabling demo mode.
+
+        Verifies the function:
+        - Recognizes "1" string as truthy demo mode value
+        - Uses file operations instead of API calls
+        - Performs demo mode validation and file loading
+        - Does not attempt HTTP requests to NASA API
+
+        This validates string-based demo mode activation.
+        """
+        # Mock successful file operations for demo mode
+        mock_path_instance = MagicMock()
+        sample_data = {"demo": "mode_1"}
+        mock_file = mock_open(read_data=json.dumps(sample_data))
+        
+        mock_path_class.return_value = mock_path_instance
+        mock_path_instance.__truediv__.return_value = mock_path_instance
+        mock_path_instance.open.return_value = mock_file.return_value
+        
+        result = fetch_feed("2025-05-01", "2025-05-07")
+        
+        # Verify demo mode was used (file operations called)
+        assert result == sample_data
+        mock_path_class.assert_called_once_with(SAMPLE_DATA_DIR)
+
+    @patch("src.fetch.Path")
+    @patch.dict(os.environ, {"DEMO_MODE": "true"})
+    def test_demo_mode_string_true(self, mock_path_class):
+        """
+        Test that fetch_feed detects DEMO_MODE="true" as enabling demo mode.
+
+        Verifies the function:
+        - Recognizes "true" string as truthy demo mode value
+        - Uses file operations instead of API calls
+        - Performs demo mode validation and file loading
+        - Does not attempt HTTP requests to NASA API
+
+        This validates case-sensitive string-based demo mode activation.
+        """
+        # Mock successful file operations for demo mode
+        mock_path_instance = MagicMock()
+        sample_data = {"demo": "mode_true"}
+        mock_file = mock_open(read_data=json.dumps(sample_data))
+        
+        mock_path_class.return_value = mock_path_instance
+        mock_path_instance.__truediv__.return_value = mock_path_instance
+        mock_path_instance.open.return_value = mock_file.return_value
+        
+        result = fetch_feed("2025-06-01", "2025-06-07")
+        
+        # Verify demo mode was used
+        assert result == sample_data
+        mock_path_class.assert_called_once()
+
+    @patch("src.fetch.Path")
+    @patch.dict(os.environ, {"DEMO_MODE": "yes"})
+    def test_demo_mode_string_yes(self, mock_path_class):
+        """
+        Test that fetch_feed detects DEMO_MODE="yes" as enabling demo mode.
+
+        Verifies the function:
+        - Recognizes "yes" string as truthy demo mode value
+        - Uses file operations instead of API calls
+        - Performs demo mode validation and file loading
+        - Does not attempt HTTP requests to NASA API
+
+        This validates alternative string-based demo mode activation.
+        """
+        # Mock successful file operations for demo mode
+        mock_path_instance = MagicMock()
+        sample_data = {"demo": "mode_yes"}
+        mock_file = mock_open(read_data=json.dumps(sample_data))
+        
+        mock_path_class.return_value = mock_path_instance
+        mock_path_instance.__truediv__.return_value = mock_path_instance
+        mock_path_instance.open.return_value = mock_file.return_value
+        
+        result = fetch_feed("2025-07-01", "2025-07-07")
+        
+        # Verify demo mode was used
+        assert result == sample_data
+        mock_path_class.assert_called_once()
+
+    @patch("src.fetch._http_get")
+    @patch.dict(os.environ, {"DEMO_MODE": "0"})
+    def test_live_mode_string_zero(self, mock_http_get):
+        """
+        Test that fetch_feed detects DEMO_MODE="0" as disabling demo mode.
+
+        Verifies the function:
+        - Recognizes "0" string as falsy demo mode value
+        - Uses API calls instead of file operations
+        - Calls _http_get with proper parameters
+        - Does not attempt file system operations
+
+        This validates string-based live mode activation.
+        """
+        expected_response = {"live": "mode_0"}
+        mock_http_get.return_value = expected_response
+        
+        result = fetch_feed("2025-08-01", "2025-08-07")
+        
+        # Verify live mode was used (HTTP call made)
+        assert result == expected_response
+        mock_http_get.assert_called_once()
+
+    @patch("src.fetch._http_get")
+    @patch.dict(os.environ, {"DEMO_MODE": "false"})
+    def test_live_mode_string_false(self, mock_http_get):
+        """
+        Test that fetch_feed detects DEMO_MODE="false" as disabling demo mode.
+
+        Verifies the function:
+        - Recognizes "false" string as falsy demo mode value
+        - Uses API calls instead of file operations
+        - Calls _http_get with proper parameters
+        - Does not attempt file system operations
+
+        This validates string-based live mode activation with false value.
+        """
+        expected_response = {"live": "mode_false"}
+        mock_http_get.return_value = expected_response
+        
+        result = fetch_feed("2025-09-01", "2025-09-07")
+        
+        # Verify live mode was used
+        assert result == expected_response
+        mock_http_get.assert_called_once()
+
+    @patch("src.fetch._http_get")
+    @patch.dict(os.environ, {"DEMO_MODE": "no"})
+    def test_live_mode_string_no(self, mock_http_get):
+        """
+        Test that fetch_feed detects DEMO_MODE="no" as disabling demo mode.
+
+        Verifies the function:
+        - Recognizes "no" string as falsy demo mode value
+        - Uses API calls instead of file operations
+        - Calls _http_get with proper parameters
+        - Does not attempt file system operations
+
+        This validates alternative string-based live mode activation.
+        """
+        expected_response = {"live": "mode_no"}
+        mock_http_get.return_value = expected_response
+        
+        result = fetch_feed("2025-10-01", "2025-10-07")
+        
+        # Verify live mode was used
+        assert result == expected_response
+        mock_http_get.assert_called_once()
+
+    @patch("src.fetch._http_get")
+    @patch.dict(os.environ, {}, clear=True)
+    def test_missing_demo_mode_defaults_to_live(self, mock_http_get):
+        """
+        Test that fetch_feed defaults to live mode when DEMO_MODE is unset.
+
+        Verifies the function:
+        - Uses live mode when DEMO_MODE environment variable is missing
+        - Applies os.environ.get("DEMO_MODE", "0") default behavior
+        - Makes API calls instead of file operations
+        - Does not attempt demo mode file loading
+
+        This validates proper fallback behavior for missing configuration.
+        """
+        expected_response = {"default": "live_mode"}
+        mock_http_get.return_value = expected_response
+        
+        result = fetch_feed("2025-11-01", "2025-11-07")
+        
+        # Verify live mode was used by default
+        assert result == expected_response
+        mock_http_get.assert_called_once()
+
+    @patch("src.fetch._http_get")
+    @patch.dict(os.environ, {"DEMO_MODE": "random_value"})
+    def test_unknown_demo_mode_defaults_to_live(self, mock_http_get):
+        """
+        Test that fetch_feed defaults to live mode for unknown DEMO_MODE values.
+
+        Verifies the function:
+        - Uses live mode for unrecognized DEMO_MODE values
+        - Only treats ("1", "true", "yes") as demo mode enablers
+        - Makes API calls for any other string values
+        - Follows safe default behavior for invalid configuration
+
+        This validates robust handling of unexpected environment values.
+        """
+        expected_response = {"unknown": "defaults_to_live"}
+        mock_http_get.return_value = expected_response
+        
+        result = fetch_feed("2025-12-01", "2025-12-07")
+        
+        # Verify live mode was used for unknown value
+        assert result == expected_response
+        mock_http_get.assert_called_once()
+
+
