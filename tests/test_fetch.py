@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch, mock_open, MagicMock
 import requests
 
 from src.fetch import _http_get, fetch_feed
-from src.config import SAMPLE_DATA_DIR
+from src.config import SAMPLE_DATA_DIR, NASA_API_KEY
 
 class TestHttpGet:
 
@@ -36,7 +36,7 @@ class TestHttpGet:
 
         # Act: Call the function under test
         url = "https://api.nasa.gov/neo/rest/v1/feed"
-        params = {"start_date": "2025-10-01", "end_date": "2025-10-07", "api_key": "DEMO_KEY"}
+        params = {"start_date": "2025-10-01", "end_date": "2025-10-07", "api_key": NASA_API_KEY}
         result = _http_get(url, params)
 
         # Assert: Verify all expected behavior
@@ -74,7 +74,7 @@ class TestHttpGet:
     
         # Act: Call the function
         url = "https://api.nasa.gov/neo/rest/v1/feed"
-        params = {"start_date": "2025-10-01", "api_key": "DEMO_KEY"}
+        params = {"start_date": "2025-10-01", "api_key": NASA_API_KEY}
         result = _http_get(url, params)
     
         # Assert: Verify retry behavior
@@ -118,7 +118,7 @@ class TestHttpGet:
     
         # Act & Assert: Function should raise exception immediately
         url = "https://api.nasa.gov/neo/rest/v1/feed"
-        params = {"start_date": "2025-10-01", "api_key": "DEMO_KEY"}
+        params = {"start_date": "2025-10-01", "api_key": NASA_API_KEY}
     
         with pytest.raises(requests.exceptions.HTTPError, match="404 Client Error"):
             _http_get(url, params)
@@ -163,7 +163,7 @@ class TestHttpGet:
     
         # Act: Call the function
         url = "https://api.nasa.gov/neo/rest/v1/feed"
-        params = {"start_date": "2025-10-01", "api_key": "DEMO_KEY"}
+        params = {"start_date": "2025-10-01", "api_key": NASA_API_KEY}
         result = _http_get(url, params)
     
         # Assert: Verify retry behavior
@@ -202,7 +202,7 @@ class TestHttpGet:
     
         # Act & Assert: Should raise RuntimeError after all retries
         url = "https://api.nasa.gov/neo/rest/v1/feed"
-        params = {"start_date": "2025-10-01", "api_key": "DEMO_KEY"}
+        params = {"start_date": "2025-10-01", "api_key": NASA_API_KEY}
     
         with pytest.raises(RuntimeError, match=r"GET failed after 5 attempts"):
             _http_get(url, params, max_retries=4)
@@ -242,7 +242,7 @@ class TestHttpGet:
     
         # Act: Trigger all retries (will eventually raise RuntimeError)
         url = "https://api.nasa.gov/neo/rest/v1/feed"
-        params = {"start_date": "2025-10-01", "api_key": "DEMO_KEY"}
+        params = {"start_date": "2025-10-01", "api_key": NASA_API_KEY}
     
         with pytest.raises(RuntimeError):
             _http_get(url, params, max_retries=4)
@@ -450,3 +450,147 @@ class TestFetchFeedDemoMode:
         assert result == sample_data
 
 
+class TestFetchFeedLiveMode:
+    """Test fetch_feed function in live mode (API integration)."""
+
+    @patch.dict(os.environ, {"DEMO_MODE": "0"})
+    @patch("src.fetch._http_get")
+    def test_live_mode_success(self, mock_http_get):
+        """
+        Test that fetch_feed makes correct API calls in live mode.
+
+        Verifies the function:
+        - Detects DEMO_MODE=0 as disabling demo mode
+        - Calls _http_get with correct URL and parameters
+        - Passes through start_date, end_date, and API key
+        - Returns the JSON response from _http_get
+
+        This validates the core live mode API integration functionality.
+        """
+        # Mock _http_get response
+        expected_response = {"near_earth_objects": {"2025-10-01": []}}
+        mock_http_get.return_value = expected_response
+
+        # Call function
+        result = fetch_feed("2025-10-01", "2025-10-07")
+
+        # Verify result
+        assert result == expected_response
+
+        # Verify _http_get was called with correct parameters
+        mock_http_get.assert_called_once_with(
+            "https://api.nasa.gov/neo/rest/v1/feed",
+            params={
+                "start_date": "2025-10-01",
+                "end_date": "2025-10-07",
+                "api_key": NASA_API_KEY
+            }
+        )
+
+    @patch.dict(os.environ, {"DEMO_MODE": "false"})
+    @patch("src.fetch._http_get")
+    def test_live_mode_environment_variations(self, mock_http_get):
+        """
+        Test that fetch_feed recognizes different non-demo DEMO_MODE values.
+
+        Verifies the function:
+        - Detects DEMO_MODE="false" as disabling demo mode
+        - Uses live mode logic for falsy environment values
+        - Makes normal API calls regardless of specific false value
+        - Maintains consistent behavior across environment variations
+
+        This validates flexible live mode environment variable detection.
+        """
+        # Mock _http_get response
+        expected_response = {"test": "live_data"}
+        mock_http_get.return_value = expected_response
+
+        # Call function
+        result = fetch_feed("2025-05-01", "2025-05-07")
+
+        # Verify result
+        assert result == expected_response
+
+        # Verify _http_get was called
+        mock_http_get.assert_called_once()
+
+    @patch.dict(os.environ, {}, clear=True)  # Clear all environment variables
+    @patch("src.fetch._http_get")
+    def test_live_mode_default_behavior(self, mock_http_get):
+        """
+        Test that fetch_feed defaults to live mode when DEMO_MODE is unset.
+
+        Verifies the function:
+        - Uses live mode when DEMO_MODE environment variable is missing
+        - Defaults to "0" value for missing environment variables
+        - Makes normal API calls with default behavior
+        - Follows expected fallback logic for configuration
+
+        This validates proper default mode selection for live API usage.
+        """
+        # Mock _http_get response
+        expected_response = {"default": "behavior"}
+        mock_http_get.return_value = expected_response
+
+        # Call function
+        result = fetch_feed("2025-03-01", "2025-03-07")
+
+        # Verify result
+        assert result == expected_response
+
+        # Verify _http_get was called
+        mock_http_get.assert_called_once()
+
+    @patch.dict(os.environ, {"DEMO_MODE": "0"})
+    @patch("src.fetch._http_get")
+    def test_live_mode_parameter_construction(self, mock_http_get):
+        """
+        Test that fetch_feed constructs API parameters correctly in live mode.
+
+        Verifies the function:
+        - Builds correct NASA API feed URL from config
+        - Includes user-provided start_date and end_date
+        - Adds NASA_API_KEY from configuration
+        - Passes parameters in expected format to _http_get
+
+        This validates proper API parameter construction and configuration usage.
+        """
+        # Mock _http_get response
+        mock_http_get.return_value = {"api": "response"}
+
+        # Call function with specific dates
+        fetch_feed("2025-12-01", "2025-12-15")
+
+        # Verify exact parameter construction
+        expected_url = "https://api.nasa.gov/neo/rest/v1/feed"
+        expected_params = {
+            "start_date": "2025-12-01",
+            "end_date": "2025-12-15", 
+            "api_key": NASA_API_KEY
+        }
+
+        mock_http_get.assert_called_once_with(expected_url, params=expected_params)
+
+    @patch.dict(os.environ, {"DEMO_MODE": "0"})
+    @patch("src.fetch._http_get")
+    def test_live_mode_error_propagation(self, mock_http_get):
+        """
+        Test that fetch_feed propagates HTTP errors from _http_get in live mode.
+
+        Verifies the function:
+        - Does not catch or handle HTTP errors from _http_get
+        - Allows RequestException to bubble up to caller
+        - Maintains error context and information
+        - Follows fail-fast principle for network issues
+
+        This validates proper error handling delegation to HTTP layer.
+        """
+        # Mock _http_get to raise an exception
+        mock_http_get.side_effect = requests.exceptions.RequestException("Network error")
+
+        # Verify exception is propagated
+        with pytest.raises(requests.exceptions.RequestException, match="Network error"):
+            fetch_feed("2025-01-01", "2025-01-07")
+
+        # Verify _http_get was called
+        mock_http_get.assert_called_once()
