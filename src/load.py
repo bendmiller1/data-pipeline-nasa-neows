@@ -1,31 +1,52 @@
 """
 Load layer for the NASA NeoWs Data Pipeline.
 
-This module persists transformed NeoWs data into a local SQLite database.
-It supports creating the database (and table) if missing and inserting
-records from a pandas DataFrame or from a CSV produced by the transform step.
+This module provides database persistence for transformed NeoWs data with support
+for both SQLite and PostgreSQL backends. It includes database-agnostic connection
+management, schema handling, and data loading operations.
 
-It also supports idempotent reloads for a specific date window:
-before inserting, it can delete rows in the [start_date, end_date] range
-to avoid UNIQUE violations under the composite PK (close_approach_date, id).
+Key Features:
+- Dual database support: SQLite (development/demo) and PostgreSQL (production)
+- Database-agnostic operations through SQLAlchemy
+- Idempotent data loading with date range pre-deletion
+- Connection pooling for PostgreSQL
+- Automatic schema creation and management
+- CSV to database pipeline integration
+
+Database Support:
+- SQLite: File-based storage for development, testing, and demos
+- PostgreSQL: Production-ready with connection pooling
+
+The module supports creating databases and tables if missing, inserting records
+from pandas DataFrames or CSV files, and idempotent reloads for specific date
+windows to avoid UNIQUE violations under the composite PK (close_approach_date, id).
 
 Typical usage examples:
     # As a module targeting the default CSV created by transform.py
     python -m src.load
 
-    # Programmatic usage:
+    # Programmatic usage with SQLite (legacy/demo):
     from pathlib import Path
     from src.load import read_csv_to_dataframe, load_dataframe_to_sqlite
     df = read_csv_to_dataframe(Path("data/processed/neows_latest.csv"))
     load_dataframe_to_sqlite(df, delete_range_before_insert=True)
+
+    # Modern usage with DatabaseManager (dual database support):
+    from src.config import DATABASE_URL
+    from src.load import DatabaseManager
+    db = DatabaseManager(DATABASE_URL)
+    schema_sql = db.get_schema_sql()
+    db.execute_sql(schema_sql)
 """
-# This module handles loading the transformed NeoWs CSV data into a SQLite database
+# This module handles loading the transformed NeoWs CSV data into both SQLite and PostgreSQL databases
 
 from __future__ import annotations # Allows the program to use newer type hint syntax in older Python versions
 
 from pathlib import Path # Allows the program to work with file system path objects in a platform-independent way
 from typing import Optional, Literal # Provides type hinting for optional parameters and literal types
-
+from sqlalchemy import create_engine, text # Provides the create_engine function to establish database connections and text for executing raw SQL
+from sqlalchemy.engine import Engine # Provides the Engine type for type hinting database engine objects
+import logging # Provides logging capabilities for tracking events that happen when some software runs
 import sqlite3 # Provides the interface for interacting with SQLite databases
 import pandas as pd # Provides useful "database-like" data structures (Series - one column with rows, DataFrame - multiple columns with rows) and data manipulation functions
 
@@ -60,6 +81,164 @@ CREATE TABLE IF NOT EXISTS neows (
 CREATE INDEX IF NOT EXISTS idx_neows_id ON neows (id);
 """
 
+# -----------------------------------------------------------------------------
+# PostgreSQL schema: proper data types and basic indexing for production use.
+# Uses DATE/BOOLEAN types for better type safety, VARCHAR constraints for data
+# validation, and essential indexes for common query patterns (date ranges,
+# asteroid lookups, hazard filtering, size sorting).
+# -----------------------------------------------------------------------------
+
+# PostgreSQL schema with proper data types and basic indexing
+# (suitable for production deployments with moderate query loads)
+POSTGRES_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS neows (
+    id VARCHAR(50),
+    name VARCHAR(200),
+    close_approach_date DATE,
+    absolute_magnitude_h REAL,
+    diameter_min_km REAL,
+    diameter_max_km REAL,
+    is_potentially_hazardous BOOLEAN,
+    relative_velocity_kps REAL,
+    miss_distance_km REAL,
+    orbiting_body VARCHAR(50),
+    PRIMARY KEY (close_approach_date, id)
+);
+
+-- Performance indexes
+CREATE INDEX IF NOT EXISTS idx_neows_id ON neows (id);
+CREATE INDEX IF NOT EXISTS idx_neows_date ON neows (close_approach_date);
+CREATE INDEX IF NOT EXISTS idx_neows_hazardous ON neows (is_potentially_hazardous);
+CREATE INDEX IF NOT EXISTS idx_neows_size ON neows (diameter_max_km);
+"""
+
+class DatabaseManager:
+    """
+    Database connection manager supporting both SQLite and PostgreSQL backends.
+
+    This class provides a unified interface for database operations across different
+    database types. It automatically configures engine settings based on the database
+    URL and provides methods for connection management, query execution, and schema
+    handling.
+
+    Key features:
+    - Automatic database type detection from connection URL
+    - PostgreSQL: Connection pooling and connection recycling
+    - SQLite: Thread-safe configuration for concurrent access
+    - Parameterized query execution with SQL injection protection
+    - Database-specific schema selection
+
+    Typical usage:
+        # SQLite (development/demo)
+        db = DatabaseManager("sqlite:///data/warehouse/neows_data.db")
+        
+        # PostgreSQL (production)
+        db = DatabaseManager("postgresql://user:pass@localhost:5432/nasa_neows")
+        
+        # Execute queries
+        result = db.execute_sql("SELECT COUNT(*) FROM neows")
+        
+        # Get appropriate schema
+        schema_sql = db.get_schema_sql()
+
+    Attributes:
+        database_url (str): Original database connection string
+        is_postgres (bool): True if using PostgreSQL, False if SQLite
+        engine (sqlalchemy.engine.Engine): SQLAlchemy database engine
+    """
+
+    def __init__(self, database_url: str):
+        """
+        Initialize database manager with appropriate engine configuration.
+
+        Creates a SQLAlchemy engine with database-specific settings:
+        - PostgreSQL: Connection pooling with ping validation and recycling
+        - SQLite: Thread safety configuration
+
+        Args:
+            database_url (str): Database connection string. Format:
+                - SQLite: "sqlite:///path/to/database.db"
+                - PostgreSQL: "postgresql://user:password@host:port/database"
+
+        Raises:
+            sqlalchemy.exc.ArgumentError: If the database URL is invalid.
+            sqlalchemy.exc.NoSuchModuleError: If required database driver is missing.
+        """
+        self.database_url = database_url
+        self.is_postgres = database_url.startswith("postgresql")
+
+        if self.is_postgres:
+            self.engine = create_engine(
+                database_url,
+                pool_size=5,
+                pool_recycle=3600,
+                pool_pre_ping=True,
+            )
+        else:
+            self.engine = create_engine(
+                database_url,
+                connect_args={"check_same_thread": False},
+            )
+
+    def get_connection(self):
+        """
+        Get a database connection from the engine pool.
+
+        Returns:
+            sqlalchemy.engine.Connection: Database connection object that should
+                be used with context manager (with statement) for automatic cleanup.
+
+        Raises:
+            sqlalchemy.exc.OperationalError: If connection to database fails.
+        """
+        return self.engine.connect()
+    
+    def execute_sql(self, sql_query: str, parameters: Optional[dict] = None):
+        """
+        Execute a SQL query with optional parameters and automatic connection management.
+
+        Uses parameterized queries to prevent SQL injection. Automatically commits
+        the transaction and closes the connection.
+
+        Args:
+            sql_query (str): SQL statement to execute. Use :parameter_name format
+                for parameter placeholders.
+            parameters (Optional[dict]): Dictionary mapping parameter names to values.
+                Defaults to None (empty dict).
+
+        Returns:
+            sqlalchemy.engine.Result: Query execution result containing rows (if any)
+                and metadata.
+
+        Raises:
+            sqlalchemy.exc.SQLAlchemyError: If SQL execution fails.
+            sqlalchemy.exc.IntegrityError: If query violates database constraints.
+        """
+        with self.get_connection() as conn:
+            result = conn.execute(text(sql_query), parameters or {})
+            conn.commit()
+            return result
+        
+    def get_schema_sql(self) -> str:
+        """
+        Get the appropriate CREATE TABLE schema for the current database type.
+
+        Returns database-specific DDL statements with proper data types:
+        - PostgreSQL: Uses DATE, BOOLEAN, VARCHAR types with length constraints
+        - SQLite: Uses TEXT, INTEGER, REAL types with simpler syntax
+
+        Returns:
+            str: SQL DDL statements to create the neows table and indexes.
+
+        Raises:
+            NameError: If POSTGRES_SCHEMA_SQL is not defined when using PostgreSQL.
+        """
+        if self.is_postgres:
+            return POSTGRES_SCHEMA_SQL
+        else:
+            return DEFAULT_SCHEMA_SQL
+
+    
 
 def ensure_database_ready( # Function to ensure the SQLite database and neows table exist (creates them if not)
         database_path: Path = DB_PATH, # Path to the SQLite database file (defaults to the configured DB_PATH)
@@ -95,7 +274,7 @@ def ensure_database_ready( # Function to ensure the SQLite database and neows ta
         connection.close() # ensures the database connection is closed
 
 
-def read_csv_to_dataframe(csv_path: Path = CSV_OUTPUT,) -> pd.DataFrame: # Function to read the transformed CSV into a pandas DataFrame for loading into SQLite
+def read_csv_to_dataframe(csv_path: Path = CSV_OUTPUT,) -> pd.DataFrame: # Function to read the transformed CSV into a pandas DataFrame for database loading
     """
     Load a CSV (produced by transform.py) into a pandas DataFrame.
 
