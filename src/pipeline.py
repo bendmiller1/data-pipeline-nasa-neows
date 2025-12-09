@@ -4,7 +4,7 @@ Pipeline orchestrator for the NASA NeoWs Data Pipeline.
 This module wires together the ETL stages:
     1) Fetch     (src.fetch.fetch_feed)
     2) Transform (src.transform.transform_to_dataframe + save_dataframe_to_csv)
-    3) Load      (src.load.load_dataframe_to_sqlite)
+    3) Load      (src.load.load_dataframe_to_database)
 
 Run as a module:
     python -m src.pipeline --mode feed --start 2025-10-01 --end 2025-10-03 --demo
@@ -30,7 +30,7 @@ from typing import List # Allows use of List in type hints
 from .config import CSV_OUTPUT, DB_PATH # Imports the CSV output path and database path from the config module
 from .fetch import fetch_feed # Imports the fetch_feed function from the fetch module
 from .transform import transform_to_dataframe, save_dataframe_to_csv # Imports transform_to_dataframe and save_dataframe_to_csv functions from the transform module
-from .load import load_dataframe_to_sqlite # Imports the load_dataframe_to_sqlite function from the load module
+from .load import load_dataframe_to_database # Imports the load_dataframe_to_database function from the load module
 from .utils.dates import validate_date_range # Imports the validate_date_range function from the utils.dates module
 from .utils.mode_toggle import set_demo_mode_for_process, set_live_mode_for_process # Imports functions to set runtime mode for the pipeline (DEMO = Local sample data, LIVE = NASA API)
 
@@ -133,9 +133,9 @@ def run_feed_mode(start_date: str, end_date: str) -> int: # Function to run the 
     
     # 3) Load (idempotent for the selected window)
     try:
-        written_rows = load_dataframe_to_sqlite( # Calls load_dataframe_to_sqlite to load the DataFrame into the SQLite database
+        written_rows = load_dataframe_to_database( # Calls load_dataframe_to_database to load the DataFrame into the database
             dataframe = dataframe, # DataFrame to load
-            database_path = DB_PATH, # Path to the SQLite database
+            database_url = f"sqlite:///{DB_PATH}", # SQLite database URL
             table_name = "neows", # Table name to load data into
             if_exists = "append", # If the table exists, append new data to the existing table
             delete_range_before_insert = True, # Delete existing records in the date range before inserting new data (ensures idempotency)

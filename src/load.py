@@ -345,6 +345,97 @@ def delete_date_range( # Function to delete rows in the requested date range fro
     return deleted_rows
     
 
+def prepare_dataframe_for_postgres(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """
+    Optimize DataFrame data types for PostgreSQL insertion.
+    
+    Converts pandas data types to PostgreSQL-optimized formats:
+    - Date columns to datetime64[ns]
+    - Integer columns with boolean-like values (0/1) to boolean
+    - String columns to appropriate text types with validation
+    
+    Args:
+        dataframe (pd.DataFrame): Input DataFrame with mixed data types
+        
+    Returns:
+        pd.DataFrame: DataFrame with PostgreSQL-optimized data types
+        
+    Raises:
+        ValueError: If data conversion fails or contains invalid values
+    """
+    if dataframe is None or dataframe.empty:
+        return dataframe
+    
+    # Create a copy to avoid modifying the original DataFrame
+    optimized_df = dataframe.copy()
+    
+    # Convert date columns to datetime
+    date_columns = ['close_approach_date', 'epoch_date_close_approach', 'orbital_period_days']
+    for col in date_columns:
+        if col in optimized_df.columns:
+            try:
+                # Handle different date formats
+                if col == 'close_approach_date':
+                    # Expected format: YYYY-MM-DD
+                    optimized_df[col] = pd.to_datetime(optimized_df[col], format='%Y-%m-%d', errors='coerce')
+                elif col == 'epoch_date_close_approach':
+                    # Expected format: Unix timestamp or ISO format
+                    optimized_df[col] = pd.to_datetime(optimized_df[col], errors='coerce')
+                elif col == 'orbital_period_days':
+                    # Convert to numeric first, then handle as days
+                    optimized_df[col] = pd.to_numeric(optimized_df[col], errors='coerce')
+            except Exception as e:
+                print(f"[load] Warning: Could not convert {col} to datetime: {e}")
+    
+    # Convert boolean-like integer columns
+    boolean_columns = ['is_potentially_hazardous', 'is_sentry_object']
+    for col in boolean_columns:
+        if col in optimized_df.columns:
+            try:
+                # Convert 0/1 integers to boolean, handle NaN values
+                unique_values = optimized_df[col].dropna().unique()
+                if set(unique_values).issubset({0, 1, True, False}):
+                    optimized_df[col] = optimized_df[col].astype(bool)
+            except Exception as e:
+                print(f"[load] Warning: Could not convert {col} to boolean: {e}")
+    
+    # Optimize numeric columns for PostgreSQL
+    numeric_columns = [
+        'diameter_min_km', 'diameter_max_km',  # Actual column names in CSV
+        'relative_velocity_kps', 'miss_distance_km',  # Actual column names in CSV
+        'absolute_magnitude_h', 'orbital_period_days'
+    ]
+    for col in numeric_columns:
+        if col in optimized_df.columns:
+            try:
+                # Convert to float64 for precision, handle NaN values
+                optimized_df[col] = pd.to_numeric(optimized_df[col], errors='coerce')
+                # Use float32 for less critical measurements to save space
+                if col in ['relative_velocity_kps', 'miss_distance_km']:
+                    optimized_df[col] = optimized_df[col].astype('float32')
+            except Exception as e:
+                print(f"[load] Warning: Could not optimize numeric column {col}: {e}")
+    
+    # Validate string columns and limit length for VARCHAR efficiency
+    string_columns = ['id', 'name', 'nasa_jpl_url', 'orbiting_body']  # Updated column names
+    for col in string_columns:
+        if col in optimized_df.columns:
+            try:
+                # Ensure string type and handle nulls
+                optimized_df[col] = optimized_df[col].astype(str)
+                # Replace 'nan' strings with actual NaN
+                optimized_df[col] = optimized_df[col].replace('nan', pd.NA)
+                # Truncate very long strings to reasonable limits for PostgreSQL VARCHAR
+                if col == 'nasa_jpl_url':
+                    optimized_df[col] = optimized_df[col].str[:500]  # URLs can be long
+                else:
+                    optimized_df[col] = optimized_df[col].str[:255]  # Standard VARCHAR limit
+            except Exception as e:
+                print(f"[load] Warning: Could not optimize string column {col}: {e}")
+    
+    return optimized_df
+
+
 def load_dataframe_to_database( # Main function to load a pandas DataFrame into the database (with optional pre-delete for idempotency)
         dataframe: pd.DataFrame,
         database_url: Optional[str] = None,
@@ -416,6 +507,12 @@ def load_dataframe_to_database( # Main function to load a pandas DataFrame into 
 
     # Create DatabaseManager instance and insert data
     db = DatabaseManager(database_url)
+    
+    # Optimize DataFrame for PostgreSQL if using PostgreSQL backend
+    if db.is_postgres:
+        print("[load] Optimizing DataFrame for PostgreSQL...")
+        dataframe = prepare_dataframe_for_postgres(dataframe)
+    
     with db.get_connection() as conn:
         dataframe.to_sql(
             name=table_name,
