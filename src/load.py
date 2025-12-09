@@ -25,11 +25,11 @@ Typical usage examples:
     # As a module targeting the default CSV created by transform.py
     python -m src.load
 
-    # Programmatic usage with SQLite (legacy/demo):
+    # Programmatic usage with database-agnostic approach:
     from pathlib import Path
-    from src.load import read_csv_to_dataframe, load_dataframe_to_sqlite
+    from src.load import read_csv_to_dataframe, load_dataframe_to_database
     df = read_csv_to_dataframe(Path("data/processed/neows_latest.csv"))
-    load_dataframe_to_sqlite(df, delete_range_before_insert=True)
+    load_dataframe_to_database(df, delete_range_before_insert=True)
 
     # Modern usage with DatabaseManager (dual database support):
     from src.config import DATABASE_URL
@@ -47,13 +47,13 @@ from typing import Optional, Literal # Provides type hinting for optional parame
 from sqlalchemy import create_engine, text # Provides the create_engine function to establish database connections and text for executing raw SQL
 from sqlalchemy.engine import Engine # Provides the Engine type for type hinting database engine objects
 import logging # Provides logging capabilities for tracking events that happen when some software runs
-import sqlite3 # Provides the interface for interacting with SQLite databases
 import pandas as pd # Provides useful "database-like" data structures (Series - one column with rows, DataFrame - multiple columns with rows) and data manipulation functions
 
 from .config import( # Import configuration variables from config.py
     DB_PATH,
     CSV_OUTPUT,
     WAREHOUSE_DIR,
+    DATABASE_URL
 )
 
 # -----------------------------------------------------------------------------
@@ -240,39 +240,48 @@ class DatabaseManager:
 
     
 
-def ensure_database_ready( # Function to ensure the SQLite database and neows table exist (creates them if not)
-        database_path: Path = DB_PATH, # Path to the SQLite database file (defaults to the configured DB_PATH)
+def ensure_database_ready( # Function to ensure the database and neows table exist (creates them if not)
+        database_url: Optional[str] = None, # Optional database connection string (if None, uses the default DATABASE_URL from config.py)
         schema_sql_path: Optional[Path] = None, # Optional path to a .sql file containing DDL statements (if None, uses the DEFAULT_SCHEMA_SQL)
 ) -> None:
     """
-    Create the SQLite database (and neows table) if they do not exist.
-
-    If a schema file path is provided (e.g., sql/schema.sql), it will be used.
-    Otherwise, a minimal default schema suitable for the current transform
-    output will be applied.
+    Create the database and neows table if they do not exist.
+    
+    Works with both SQLite and PostgreSQL backends. For SQLite, ensures
+    the directory structure exists. For both databases, applies the
+    appropriate schema.
 
     Args:
-        database_path (Path): Target SQLite database file path.
+        database_url (Optional[str]): Database connection string. If None,
+            uses the configured DATABASE_URL.
         schema_sql_path (Optional[Path]): Optional path to a .sql file containing
-            DDL statements.
+            DDL statements. If provided, overrides the default schema.
 
     Raises:
-        sqlite3.Error: If the database or schema creation fails.
+        sqlalchemy.exc.SQLAlchemyError: If database or schema creation fails.
     """
-    database_path.parent.mkdir(parents=True, exist_ok=True) # Ensures that the parent directory for the database file exists (creates it if not)
-
-    if schema_sql_path and schema_sql_path.exists(): # If a schema file path is provided and the file exists
-        ddl_sql = schema_sql_path.read_text(encoding="utf-8") # Reads the SQL DDL statements from the file
-    else:
-        ddl_sql = DEFAULT_SCHEMA_SQL # Else, uses the default schema defined in this module
+    # Use configured DATABASE_URL if none provided
+    if database_url is None:
+        database_url = DATABASE_URL
     
-    connection = sqlite3.connect(database_path) # Opens a connection to the SQLite database (creates the file if it does not exist)
-    try:
-        connection.executescript(ddl_sql) # Executes the DDL SQL script to create the neows table and any indexes (either from file or default)
-        connection.commit() # Commits the changes to the database
-    finally:
-        connection.close() # ensures the database connection is closed
+    # Create DatabaseManager instance
+    db = DatabaseManager(database_url)
 
+    # For SQLite, ensure the directory structure exists
+    if not db.is_postgres and database_url.startswith("sqlite:///"):
+        # Extract file path from SQLite URL (removes "sqlite:///" prefix)
+        db_file_path = Path(database_url[10:])
+        db_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Get appropriate schema SQL
+    if schema_sql_path and schema_sql_path.exists():
+        ddl_sql = schema_sql_path.read_text(encoding="utf-8")
+    else:
+        ddl_sql = db.get_schema_sql()
+
+    # Execute schema creation
+    db.execute_sql(ddl_sql)
+   
 
 def read_csv_to_dataframe(csv_path: Path = CSV_OUTPUT,) -> pd.DataFrame: # Function to read the transformed CSV into a pandas DataFrame for database loading
     """
@@ -300,41 +309,51 @@ def read_csv_to_dataframe(csv_path: Path = CSV_OUTPUT,) -> pd.DataFrame: # Funct
 
 
 def delete_date_range( # Function to delete rows in the requested date range from the NEoWs table (to enable idempotent reloads)
-        database_path: Path, # Path to the SQLite file
-        table_name: str, # Name of the table to delete the range from (e.g., "neows")
         start_date: str, # Start date of the range to delete (inclusive, in "YYYY-MM-DD" format)
         end_date: str, # End date of the range to delete (inclusive, in "YYYY-MM-DD" format)
+        database_url: Optional[str] = None, # Optional database connection string (if None, uses the default DATABASE_URL from config.py)
+        table_name: str = "neows", # Name of the table to delete the range from (e.g., "neows")
 ) -> int:
     """
-    Delete rows in [start_date, end_date] (inclusive) from the target table 
-    (Enables reruns of the same range of dates).
+    Delete rows in [start_date, end_date] (inclusive) from the target table.
+    
+    Works with both SQLite and PostgreSQL backends. Enables reruns of the same
+    range of dates by clearing existing data before new inserts.
 
     Args:
-        database_path (Path): SQLite DB path.
-        table_name (str): Table to delete from (e.g., "neows").
-        start_date (str): "YYYY-MM-DD".
-        end_date (str): "YYYY-MM-DD".
+        start_date (str): Start date in "YYYY-MM-DD" format (inclusive).
+        end_date (str): End date in "YYYY-MM-DD" format (inclusive).
+        database_url (Optional[str]): Database connection string. If None,
+            uses the configured DATABASE_URL.
+        table_name (str): Table to delete from. Defaults to "neows".
 
     Returns:
         int: Number of rows deleted.
+        
+    Raises:
+        sqlalchemy.exc.SQLAlchemyError: If the delete operation fails.
     """
-    with sqlite3.connect(database_path) as connection: # Opens a connection to the SQLite database (ensures it is closed after the block)
-        cursor = connection.cursor() # Creates a cursor object to execute SQL commands 
-        cursor.execute( # Executes a DELETE SQL command to remove rows in the specified date range
-            f"""
-            DELETE FROM {table_name}
-            WHERE close_approach_date BETWEEN ? AND ?
-            """,
-            (start_date, end_date),
-        )
-        deleted_rows = cursor.rowcount if cursor.rowcount is not None else 0 # Gets the count of rows deleted (if rowcount is None, defaults to 0)
-        connection.commit() # Commits the changes to the database
-        return deleted_rows # Returns the count of rows that were deleted
+    # Use configured DATABASE_URL if none provided
+    if database_url is None:
+        database_url = DATABASE_URL
+
+    # Create DatabaseManager instance
+    db = DatabaseManager(database_url)
+
+    # Execute DELETE with parameterized query (safe from SQL injection)
+    result = db.execute_sql(
+        f"DELETE FROM {table_name} WHERE close_approach_date BETWEEN :start_date AND :end_date",
+        {"start_date": start_date, "end_date": end_date},
+    )
+
+    # Get the count of rows deleted from the result
+    deleted_rows = result.rowcount if result.rowcount is not None else 0
+    return deleted_rows
     
 
-def load_dataframe_to_sqlite( # Main function to load a pandas DataFrame into the SQLite database (with optional pre-delete for idempotency)
+def load_dataframe_to_database( # Main function to load a pandas DataFrame into the database (with optional pre-delete for idempotency)
         dataframe: pd.DataFrame,
-        database_path: Path = DB_PATH,
+        database_url: Optional[str] = None,
         table_name: str = "neows",
         if_exists: Literal["fail", "replace", "append"] = "append",
         chunk_size: Optional[int] = None,
@@ -343,14 +362,16 @@ def load_dataframe_to_sqlite( # Main function to load a pandas DataFrame into th
         end_date: Optional[str] = None,
 ) -> int:
     """
-    Insert a DataFrame into a SQLite table, creating the DB if needed.
+    Insert a DataFrame into the database, creating the DB/table if needed.
 
-    Optionally deletes an existing date window to keep re-runs idempotent
-    under the composite PK (close_approach_date, id).
+    Works with both SQLite and PostgreSQL backends. Optionally deletes an 
+    existing date window to keep re-runs idempotent under the composite 
+    PK (close_approach_date, id).
 
     Args:
         dataframe (pd.DataFrame): Transformed NeoWs records to persist.
-        database_path (Path): Path to the SQLite database file.
+        database_url (Optional[str]): Database connection string. If None,
+            uses the configured DATABASE_URL.
         table_name (str): Destination table name. Defaults to "neows".
         if_exists (str): Behavior if the table exists. One of {"fail","replace","append"}.
             Defaults to "append".
@@ -366,7 +387,7 @@ def load_dataframe_to_sqlite( # Main function to load a pandas DataFrame into th
         int: Number of rows written.
 
     Raises:
-        sqlite3.Error: If insertion fails.
+        sqlalchemy.exc.SQLAlchemyError: If database operations fail.
         ValueError: If the DataFrame is empty or required columns are missing.
     """
     if dataframe is None or dataframe.empty:
@@ -377,30 +398,43 @@ def load_dataframe_to_sqlite( # Main function to load a pandas DataFrame into th
             "DataFrame must contain 'close_approach_date' column to delete date range." 
         )
     
-    #Infer date range from DataFrame if not provided
+    # Infer date range from DataFrame if not provided
     if delete_range_before_insert and (start_date is None or end_date is None): # If pre-delete is requested but start_date or end_date is not provided, infers them from the DataFrame (for testing the module by itself)
         start_date = str(dataframe["close_approach_date"].min()) # Infers the start date from the minimum close_approach_date in the DataFrame
         end_date = str(dataframe["close_approach_date"].max()) # Infers the end date from the maximum close_approach_date in the DataFrame
 
-    ensure_database_ready(database_path) # Calls ensure_database_ready to create the database and neows table if they do not exist
+    # Use configured DATABASE_URL if none provided
+    if database_url is None:
+        database_url = DATABASE_URL
+
+    # Ensure database and table exist
+    ensure_database_ready(database_url)
 
     # Optional pre-delete to keep re-runs idempotent
-    if delete_range_before_insert and start_date and end_date: # if pre-delete is requested and both start_date and end_date are provided (either by the user or inferred from the DataFrame)
-        deleted_rows = delete_date_range(database_path, table_name, start_date, end_date) # Calls delete_date_range to remove existing rows in the specified date range
-        print(f"[load] Pre-delete: removed {deleted_rows} rows in [{start_date} .. {end_date}]") # Prints a message indicating how many rows were deleted in the specified date range
-
-    with sqlite3.connect(database_path) as connection: # Opens a connection to the SQLite database ('with' ensures it is closed after the block)
-        dataframe.to_sql( 
-            name = table_name, # Name of the target table (the table that will receive and store the data)
-            con = connection, # The active SQLite database connection
-            if_exists = if_exists, # Specifies behaviour if the table already exists (defaults to "append" to add new rows)
-            index = False, # Do not include the DataFrame index column as a database column
-            chunksize = chunk_size, # Optional number of rows to insert per batch (if None, inserts all at once)
-            method = None, # Use default executemany
+    if delete_range_before_insert and start_date and end_date:
+        deleted_rows = delete_date_range(
+            start_date=start_date,
+            end_date=end_date,
+            database_url=database_url,
+            table_name=table_name,
         )
-        connection.commit() # Commits the changes to the database
+        print(f"[load] Pre-delete: removed {deleted_rows} rows in [{start_date} .. {end_date}]")
 
+    # Create DatabaseManager instance and insert data
+    db = DatabaseManager(database_url)
+    with db.get_connection() as conn:
+        dataframe.to_sql(
+            name=table_name,
+            con=conn,
+            if_exists=if_exists,
+            index=False,
+            chunksize=chunk_size,
+            method=None,
+        )
+        conn.commit()
+    
     return int(len(dataframe)) # Returns the number of rows written to the database (the length of the DataFrame)
+
 
 # Verifies functionality when running this file directly
 if __name__ == "__main__":
@@ -408,9 +442,9 @@ if __name__ == "__main__":
     Script entry point for manual testing.
 
     Reads the default CSV produced by transform.py (CSV_OUTPUT),
-    ensures the SQLite database exists, deletes the CSV's date window,
+    ensures the database exists, deletes the CSV's date window,
     and appends rows to the "neows" table. Prints a confirmation with
-    row count and target DB path.
+    row count and target database. 
     """
     try:
         print(f"[load] Reading CSV from: {CSV_OUTPUT}")
@@ -419,10 +453,10 @@ if __name__ == "__main__":
         min_date = str(records_dataframe["close_approach_date"].min())
         max_date = str(records_dataframe["close_approach_date"].max())
 
-        print(f"[load] Ensuring database at: {DB_PATH}")
-        written_rows = load_dataframe_to_sqlite(
+        print(f"[load] Ensuring database ready.")
+        written_rows = load_dataframe_to_database(
             dataframe = records_dataframe,
-            database_path = DB_PATH,
+            database_url = None,
             table_name = "neows",
             if_exists = "append",
             delete_range_before_insert = True,
@@ -430,7 +464,7 @@ if __name__ == "__main__":
             end_date = max_date,
         )
 
-        print(f"[load] Wrote {written_rows} rows to SQLite database at: {DB_PATH}")
+        print(f"[load] Wrote {written_rows} rows to database.")
         print(f"[load] Warehouse directory: {WAREHOUSE_DIR}")
 
     except Exception as e:
