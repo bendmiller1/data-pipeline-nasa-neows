@@ -135,14 +135,14 @@ def run_feed_mode(start_date: str, end_date: str) -> int: # Function to run the 
     try:
         written_rows = load_dataframe_to_database( # Calls load_dataframe_to_database to load the DataFrame into the database
             dataframe = dataframe, # DataFrame to load
-            database_url = f"sqlite:///{DB_PATH}", # SQLite database URL
+            database_url = f"sqlite:///{DB_PATH}", # SQLite database URL (overrides config for pipeline compatibility)
             table_name = "neows", # Table name to load data into
             if_exists = "append", # If the table exists, append new data to the existing table
             delete_range_before_insert = True, # Delete existing records in the date range before inserting new data (ensures idempotency)
             start_date = start_date, # User-provided start date for the date range
             end_date = end_date, # User-provided end date for the date range
         )
-        print(f"[pipeline] Loaded {written_rows} rows into SQLite database at: {DB_PATH}") # Prints the number of rows written to the database and the database path
+        print(f"[pipeline] Loaded {written_rows} rows into database at: {DB_PATH}") # Prints the number of rows written to the database and the database path
     except Exception as e:
         print(f"[pipeline][ERROR][load] {type(e).__name__}: {e}") # Catches and prints any exceptions that occur during the load stage
         return 5

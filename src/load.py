@@ -3,11 +3,13 @@ Load layer for the NASA NeoWs Data Pipeline.
 
 This module provides database persistence for transformed NeoWs data with support
 for both SQLite and PostgreSQL backends. It includes database-agnostic connection
-management, schema handling, and data loading operations.
+management, schema handling, and data loading operations with automatic PostgreSQL
+data type optimization.
 
 Key Features:
 - Dual database support: SQLite (development/demo) and PostgreSQL (production)
 - Database-agnostic operations through SQLAlchemy
+- Automatic PostgreSQL data type optimization for enhanced performance
 - Idempotent data loading with date range pre-deletion
 - Connection pooling for PostgreSQL
 - Automatic schema creation and management
@@ -15,7 +17,7 @@ Key Features:
 
 Database Support:
 - SQLite: File-based storage for development, testing, and demos
-- PostgreSQL: Production-ready with connection pooling
+- PostgreSQL: Production-ready with connection pooling and type optimization
 
 The module supports creating databases and tables if missing, inserting records
 from pandas DataFrames or CSV files, and idempotent reloads for specific date
@@ -29,6 +31,7 @@ Typical usage examples:
     from pathlib import Path
     from src.load import read_csv_to_dataframe, load_dataframe_to_database
     df = read_csv_to_dataframe(Path("data/processed/neows_latest.csv"))
+    # Uses configured DATABASE_URL (SQLite or PostgreSQL)
     load_dataframe_to_database(df, delete_range_before_insert=True)
 
     # Modern usage with DatabaseManager (dual database support):
