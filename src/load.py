@@ -194,31 +194,25 @@ class DatabaseManager:
         return self.engine.connect()
     
     def execute_sql(self, sql_query: str, parameters: Optional[dict] = None):
-        """
-        Execute a SQL query with optional parameters and automatic connection management.
-
-        Uses parameterized queries to prevent SQL injection. Automatically commits
-        the transaction and closes the connection.
-
-        Args:
-            sql_query (str): SQL statement to execute. Use :parameter_name format
-                for parameter placeholders.
-            parameters (Optional[dict]): Dictionary mapping parameter names to values.
-                Defaults to None (empty dict).
-
-        Returns:
-            sqlalchemy.engine.Result: Query execution result containing rows (if any)
-                and metadata.
-
-        Raises:
-            sqlalchemy.exc.SQLAlchemyError: If SQL execution fails.
-            sqlalchemy.exc.IntegrityError: If query violates database constraints.
-        """
+        """Execute SQL query(s) - handles multiple statements for schema creation."""
         with self.get_connection() as conn:
-            result = conn.execute(text(sql_query), parameters or {})
+            result = None
+            
+            # Split multiple statements and execute separately  
+            if ";" in sql_query and parameters is None:  # Schema creation case
+                statements = [stmt.strip() for stmt in sql_query.split(';') if stmt.strip()]
+                for statement in statements:
+                    result = conn.execute(text(statement))
+                # If no statements were executed, create a dummy result
+                if result is None:
+                    result = conn.execute(text("SELECT 1"))
+            else:
+                # Single parameterized query
+                result = conn.execute(text(sql_query), parameters or {})
+            
             conn.commit()
             return result
-        
+
     def get_schema_sql(self) -> str:
         """
         Get the appropriate CREATE TABLE schema for the current database type.
@@ -378,9 +372,9 @@ def load_dataframe_to_database( # Main function to load a pandas DataFrame into 
         chunk_size (Optional[int]): Optional number of rows per batch insert.
         delete_range_before_insert (bool): If True, delete rows in the target
             date window before inserting. Defaults to True.
-        start_date (Optional[str]): Start of date window ("YYYY-MM-DD"). If None,
+        start_date (Optional[str]): Start of the date window ("YYYY-MM-DD"). If None,
             inferred from the DataFrame.
-        end_date (Optional[str]): End of date window ("YYYY-MM-DD"). If None,
+        end_date (Optional[str]): End of the date window ("YYYY-MM-DD"). If None,
             inferred from the DataFrame.
 
     Returns:
