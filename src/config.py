@@ -42,6 +42,30 @@ NASA_API_KEY = os.getenv("NASA_API_KEY", "DEMO_KEY") # Looks for the env variabl
 NASA_API_BASE_URL = "https://api.nasa.gov/neo/rest/v1" 
 
 #------------------------------------------------------------------------------
+# Database Configuration
+#------------------------------------------------------------------------------
+
+# Database mode selection
+USE_POSTGRES = os.getenv("USE_POSTGRES", "false").lower() in ("true", "1", "yes")
+
+if USE_POSTGRES:
+    # PostgreSQL configuration
+    POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+    POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+    POSTGRES_DB = os.getenv("POSTGRES_DB", "nasa_neows")
+    POSTGRES_USER = os.getenv("POSTGRES_USER")
+    POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "")
+    
+    # Construct PostgreSQL connection URL
+    if POSTGRES_PASSWORD:
+        DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+    else:
+        DATABASE_URL = f"postgresql://{POSTGRES_USER}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+else:
+    # SQLite configuration (default)
+    DATABASE_URL = f"sqlite:///{WAREHOUSE_DIR / 'neows_data.db'}"
+
+#------------------------------------------------------------------------------
 # Output Files
 #------------------------------------------------------------------------------
 
@@ -58,3 +82,5 @@ if __name__ == "__main__":
     print(f"ROOT_DIR: {ROOT_DIR}") # Prints the root directory path
     print(f"DATA_DIR: {DATA_DIR}") # Prints the data directory path
     print(f"NASA_API_KEY: {NASA_API_KEY}") # Prints the NASA API key being used (for debugging; be cautious with sensitive keys)
+    print(f"USE_POSTGRES: {USE_POSTGRES}") # Prints whether PostgreSQL is being used (True/False)
+    print(f"DATABASE_URL: {DATABASE_URL}") # Prints the database connection URL being used
