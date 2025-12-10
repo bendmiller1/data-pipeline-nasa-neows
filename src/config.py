@@ -56,6 +56,14 @@ if USE_POSTGRES:
     POSTGRES_USER = os.getenv("POSTGRES_USER")
     POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "")
     
+    # PostgreSQL Connection Pool Configuration
+    # Environment-aware defaults: smaller pools for development, larger for production
+    POSTGRES_POOL_SIZE = int(os.getenv("POSTGRES_POOL_SIZE", "10"))  # Base pool size
+    POSTGRES_MAX_OVERFLOW = int(os.getenv("POSTGRES_MAX_OVERFLOW", "20"))  # Additional connections during spikes
+    POSTGRES_POOL_TIMEOUT = int(os.getenv("POSTGRES_POOL_TIMEOUT", "30"))  # Seconds to wait for connection
+    POSTGRES_POOL_RECYCLE = int(os.getenv("POSTGRES_POOL_RECYCLE", "3600"))  # Recycle connections after 1 hour
+    POSTGRES_POOL_PRE_PING = os.getenv("POSTGRES_POOL_PRE_PING", "true").lower() in ("true", "1", "yes")
+    
     # Construct PostgreSQL connection URL
     if POSTGRES_PASSWORD:
         DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
@@ -64,6 +72,13 @@ if USE_POSTGRES:
 else:
     # SQLite configuration (default)
     DATABASE_URL = f"sqlite:///{WAREHOUSE_DIR / 'neows_data.db'}"
+    
+    # SQLite doesn't use connection pooling, but we define these for consistency
+    POSTGRES_POOL_SIZE = 1
+    POSTGRES_MAX_OVERFLOW = 0
+    POSTGRES_POOL_TIMEOUT = 30
+    POSTGRES_POOL_RECYCLE = -1  # No recycling for SQLite
+    POSTGRES_POOL_PRE_PING = False
 
 #------------------------------------------------------------------------------
 # Output Files

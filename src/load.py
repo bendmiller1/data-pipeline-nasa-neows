@@ -46,9 +46,11 @@ Typical usage examples:
 from __future__ import annotations # Allows the program to use newer type hint syntax in older Python versions
 
 from pathlib import Path # Allows the program to work with file system path objects in a platform-independent way
-from typing import Optional, Literal # Provides type hinting for optional parameters and literal types
-from sqlalchemy import create_engine, text # Provides the create_engine function to establish database connections and text for executing raw SQL
+from typing import Optional, Literal, Dict, Any # Provides type hinting for optional parameters and literal types
+from sqlalchemy import create_engine, text, event # Provides the create_engine function to establish database connections and text for executing raw SQL
 from sqlalchemy.engine import Engine # Provides the Engine type for type hinting database engine objects
+from sqlalchemy.pool import QueuePool # Import QueuePool for explicit pool configuration
+import time # For timing connection operations
 import logging # Provides logging capabilities for tracking events that happen when some software runs
 import pandas as pd # Provides useful "database-like" data structures (Series - one column with rows, DataFrame - multiple columns with rows) and data manipulation functions
 
@@ -56,7 +58,13 @@ from .config import( # Import configuration variables from config.py
     DB_PATH,
     CSV_OUTPUT,
     WAREHOUSE_DIR,
-    DATABASE_URL
+    DATABASE_URL,
+    # PostgreSQL connection pool configuration
+    POSTGRES_POOL_SIZE,
+    POSTGRES_MAX_OVERFLOW,
+    POSTGRES_POOL_TIMEOUT,
+    POSTGRES_POOL_RECYCLE,
+    POSTGRES_POOL_PRE_PING
 )
 
 # -----------------------------------------------------------------------------
@@ -169,19 +177,208 @@ class DatabaseManager:
         """
         self.database_url = database_url
         self.is_postgres = database_url.startswith("postgresql")
+        self._connection_stats = {
+            "connections_created": 0,
+            "connections_closed": 0,
+            "pool_timeouts": 0,
+            "total_queries": 0
+        }
 
         if self.is_postgres:
+            # Advanced PostgreSQL connection pool configuration
             self.engine = create_engine(
                 database_url,
-                pool_size=5,
-                pool_recycle=3600,
-                pool_pre_ping=True,
+                # Core pool settings
+                poolclass=QueuePool,
+                pool_size=POSTGRES_POOL_SIZE,
+                max_overflow=POSTGRES_MAX_OVERFLOW,
+                pool_timeout=POSTGRES_POOL_TIMEOUT,
+                pool_recycle=POSTGRES_POOL_RECYCLE,
+                pool_pre_ping=POSTGRES_POOL_PRE_PING,
+                
+                # Advanced pool behavior
+                pool_reset_on_return="commit",
+                pool_use_lifo=True,  # Use LIFO for better cache locality
+                
+                # Connection settings
+                connect_args={
+                    "connect_timeout": 10,  # Connection timeout in seconds
+                    "options": "-c statement_timeout=60000"  # Query timeout in milliseconds
+                },
+                
+                # Engine behavior settings
+                echo=False,  # Set to True for SQL query logging in development
+                future=True,  # Use SQLAlchemy 2.0 style
             )
+            
+            # Set up connection pool event listeners for monitoring
+            self._setup_pool_listeners()
         else:
             self.engine = create_engine(
                 database_url,
                 connect_args={"check_same_thread": False},
             )
+
+    def _setup_pool_listeners(self):
+        """Set up SQLAlchemy event listeners for connection pool monitoring."""
+        if not self.is_postgres:
+            return
+            
+        @event.listens_for(self.engine, "connect")
+        def on_connect(dbapi_conn, connection_record):
+            """Track new connections created."""
+            self._connection_stats["connections_created"] += 1
+            
+        @event.listens_for(self.engine, "close")
+        def on_close(dbapi_conn, connection_record):
+            """Track connections closed."""
+            self._connection_stats["connections_closed"] += 1
+            
+        @event.listens_for(self.engine, "invalidate")
+        def on_invalidate(dbapi_conn, connection_record, exception):
+            """Log connection invalidations for debugging."""
+            logging.warning(f"[load] Connection invalidated: {exception}")
+
+    def get_pool_status(self) -> dict:
+        """
+        Get current connection pool status and statistics.
+        
+        Returns:
+            dict: Pool statistics and configuration information.
+        """
+        if not self.is_postgres:
+            return {"pool_type": "sqlite", "status": "N/A - SQLite doesn't use pooling"}
+            
+        return {
+            "pool_type": "postgresql",
+            "engine_url": str(self.engine.url).replace(self.engine.url.password or "", "***"),
+            "connection_stats": self._connection_stats.copy(),
+            "pool_config": {
+                "base_pool_size": POSTGRES_POOL_SIZE,
+                "max_overflow": POSTGRES_MAX_OVERFLOW,
+                "timeout": POSTGRES_POOL_TIMEOUT,
+                "recycle_time": POSTGRES_POOL_RECYCLE,
+                "pre_ping": POSTGRES_POOL_PRE_PING
+            }
+        }
+
+    def warm_up_pool(self, num_connections: Optional[int] = None) -> None:
+        """
+        Pre-populate the connection pool to avoid cold start delays.
+        
+        Args:
+            num_connections (int): Number of connections to create. Defaults to pool_size.
+        """
+        if not self.is_postgres:
+            print("[load] Pool warm-up skipped: SQLite doesn't use connection pooling")
+            return
+            
+        if num_connections is None:
+            num_connections = POSTGRES_POOL_SIZE
+            
+        print(f"[load] Warming up connection pool with {num_connections} connections...")
+        connections = []
+        
+        try:
+            # Create connections to warm up the pool
+            for i in range(min(num_connections, POSTGRES_POOL_SIZE)):
+                conn = self.get_connection()
+                # Test the connection with a simple query
+                conn.execute(text("SELECT 1"))
+                connections.append(conn)
+                
+            print(f"[load] Pool warmed up with {len(connections)} connections")
+            
+        except Exception as e:
+            print(f"[load] Warning: Pool warmup failed: {e}")
+            
+        finally:
+            # Return all warmup connections to the pool
+            for conn in connections:
+                try:
+                    conn.close()
+                except:
+                    pass
+
+    def test_connection_health(self, max_retries: int = 3, timeout_seconds: float = 5.0) -> Dict[str, Any]:
+        """
+        Test the health of database connections with timing and retry logic.
+        
+        Args:
+            max_retries: Maximum number of retry attempts for failed connections
+            timeout_seconds: Maximum time to wait for each connection test
+            
+        Returns:
+            Dictionary containing health test results and performance metrics
+        """
+        import time
+        from sqlalchemy import text
+        
+        health_results = {
+            'healthy': False,
+            'total_time': 0.0,
+            'connection_time': 0.0,
+            'query_time': 0.0,
+            'retries_used': 0,
+            'pool_status': {},
+            'errors': [],
+            'test_timestamp': time.time()
+        }
+        
+        start_time = time.time()
+        
+        for attempt in range(max_retries + 1):
+            try:
+                print(f"[load] Testing connection health (attempt {attempt + 1}/{max_retries + 1})...")
+                
+                # Test connection acquisition
+                conn_start = time.time()
+                with self.get_connection() as conn:
+                    conn_time = time.time() - conn_start
+                    health_results['connection_time'] = conn_time
+                    
+                    # Test simple query execution
+                    query_start = time.time()
+                    if self.is_postgres:
+                        result = conn.execute(text("SELECT 1 as health_check, current_timestamp, version()"))
+                    else:
+                        result = conn.execute(text("SELECT 1 as health_check"))
+                    
+                    row = result.fetchone()
+                    query_time = time.time() - query_start
+                    health_results['query_time'] = query_time
+                    
+                    # Verify query result
+                    if row and row[0] == 1:
+                        health_results['healthy'] = True
+                        health_results['retries_used'] = attempt
+                        print(f"[load] Connection health test passed (conn: {conn_time:.3f}s, query: {query_time:.3f}s)")
+                        break
+                    else:
+                        raise Exception("Health check query returned unexpected result")
+                        
+            except Exception as e:
+                error_msg = f"Connection health test failed on attempt {attempt + 1}: {str(e)}"
+                print(f"[load] Warning: {error_msg}")
+                health_results['errors'].append(error_msg)
+                health_results['retries_used'] = attempt + 1
+                
+                if attempt < max_retries:
+                    # Wait briefly before retry
+                    time.sleep(0.5)
+                else:
+                    print(f"[load] Error: Connection health test failed after {max_retries + 1} attempts")
+        
+        # Calculate total test time
+        health_results['total_time'] = time.time() - start_time
+        
+        # Get current pool status
+        try:
+            health_results['pool_status'] = self.get_pool_status()
+        except Exception as e:
+            health_results['errors'].append(f"Could not get pool status: {str(e)}")
+        
+        return health_results
 
     def get_connection(self):
         """
