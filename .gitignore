@@ -9,3 +9,5 @@ data/warehouse/*.db
 data/processed/*.tmp
 data/processed/*.csv
 sample_data/*.tmp
+test.db
+test*.db
