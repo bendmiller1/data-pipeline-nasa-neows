@@ -12,7 +12,7 @@ import logging
 from typing import List, Optional
 from datetime import datetime
 from sqlalchemy import text
-from load import DatabaseManager
+from .load import DatabaseManager
 
 logger = logging.getLogger(__name__)
 

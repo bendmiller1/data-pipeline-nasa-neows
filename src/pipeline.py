@@ -25,12 +25,13 @@ from __future__ import annotations # Allows the pipeline to use newer type hint 
 import os # Allows the pipeline to interact with os environment variables eg. os.getenv("NASA_API_KEY")
 import sys # Allows the pipeline to interact with the Python runtime environment (eg. sys.exit())
 import argparse # Allows the pipeline to parse command line arguments (eg. --mode feed --start 2025-10-01 --end 2025-10-03)
-from typing import List # Allows use of List in type hints
+from typing import List, Optional # Allows use of List and Optional in type hints
 
 from .config import CSV_OUTPUT, DB_PATH, DATABASE_URL # Imports the CSV output path, database path, and database URL from the config module
 from .fetch import fetch_feed # Imports the fetch_feed function from the fetch module
 from .transform import transform_to_dataframe, save_dataframe_to_csv # Imports transform_to_dataframe and save_dataframe_to_csv functions from the transform module
-from .load import load_dataframe_to_database # Imports the load_dataframe_to_database function from the load module
+from .load import load_dataframe_to_database, DatabaseManager # Imports the load_dataframe_to_database function and DatabaseManager class from the load module
+from .migration_manager import MigrationManager # Imports the MigrationManager class for handling database migrations
 from .utils.dates import validate_date_range # Imports the validate_date_range function from the utils.dates module
 from .utils.mode_toggle import set_demo_mode_for_process, set_live_mode_for_process # Imports functions to set runtime mode for the pipeline (DEMO = Local sample data, LIVE = NASA API)
 
@@ -52,15 +53,18 @@ Typical usage examples:
   %(prog)s --mode feed --start 2025-10-01 --end 2025-10-03 --demo
   %(prog)s --mode feed --start 2025-10-01 --end 2025-10-03 --live
   %(prog)s --mode browse --pages 5 --demo  # (future feature)
+  %(prog)s --mode migrate  # Apply all pending migrations
+  %(prog)s --mode migrate --target 001 --dry-run  # Preview migration to version 001
+  %(prog)s --mode migrate --rollback --target 001  # Rollback to version 001
         """
     )
 
     # Mode selection
     parser.add_argument( # Creates a new command line argument --mode
         "--mode",
-        choices = ["feed", "browse"], # Allows only "feed" or "browse" as valid options
+        choices = ["feed", "browse", "migrate"], # Allows "feed", "browse", or "migrate" as valid options
         default = "feed", # Default mode is "feed" (browse is a future feature)
-        help = "Pipeline execution mode (default: feed) (browse is a future feature)"
+        help = "Pipeline execution mode (default: feed) (browse is a future feature, migrate runs database migrations)"
     )
 
     # Feed mode arguments
@@ -79,6 +83,22 @@ Typical usage examples:
         type = int,
         default = 1,
         help = "Number of pages to fetch - for browse mode (default: 1) (future feature)"
+    )
+
+    # Migration mode arguments
+    parser.add_argument( # Creates a new command line argument --target to specify target migration version
+        "--target",
+        help = "Target migration version (e.g., '002') - for migrate mode (optional, defaults to latest)"
+    )
+    parser.add_argument( # Creates a new command line argument --dry-run to preview migration changes
+        "--dry-run",
+        action = "store_true",
+        help = "Preview migration changes without executing - for migrate mode"
+    )
+    parser.add_argument( # Creates a new command line argument --rollback to rollback migrations
+        "--rollback",
+        action = "store_true",
+        help = "Rollback migrations to target version - for migrate mode"
     )
 
     # Mode override flags (mutually exclusive)
@@ -109,6 +129,24 @@ def run_feed_mode(start_date: str, end_date: str) -> int: # Function to run the 
         int: Exit code (0 = success, non-zero = failure).
     """
     print(f"[pipeline] Running feed ETL for [{start_date} to {end_date}] (DEMO_MODE={os.getenv('DEMO_MODE', '0')})") # Prints the start of the feed ETL process with the date range and current mode (DEMO or LIVE) ()
+
+    # 0) Ensure database schema is up-to-date
+    try:
+        print("[pipeline] Ensuring database schema is up-to-date...")
+        db_manager = DatabaseManager(DATABASE_URL)
+        migration_manager = MigrationManager(db_manager)
+        
+        # Check for pending migrations and apply them automatically
+        pending = migration_manager.get_pending_migrations()
+        if pending:
+            print(f"[pipeline] Applying {len(pending)} pending migrations: {pending}")
+            migration_manager.migrate_up()
+            print("[pipeline] Database schema updated successfully")
+        else:
+            print("[pipeline] Database schema is up-to-date")
+    except Exception as e:
+        print(f"[pipeline][ERROR][auto-migrate] {type(e).__name__}: {e}")
+        print("[pipeline][WARNING] Continuing without auto-migration - manual migration may be required")
 
     # 1) Fetch
     try:
@@ -175,6 +213,68 @@ def run_browse_mode(pages: int) -> int: # Unimplemented function to run the brow
     return 6  # Not implemented error code
 
 
+def run_migrate_mode(target_version: Optional[str] = None, dry_run: bool = False, rollback: bool = False) -> int:
+    """
+    Execute database migrations.
+
+    Args:
+        target_version (str): Target migration version (optional)
+        dry_run (bool): Preview changes without executing
+        rollback (bool): Rollback migrations instead of applying
+
+    Returns:
+        int: Process exit code (0 = success, 7 = migration failure)
+    """
+    try:
+        print("[pipeline] Initializing migration system...")
+        
+        # Create database manager and migration manager
+        db_manager = DatabaseManager(DATABASE_URL)
+        migration_manager = MigrationManager(db_manager)
+        
+        # Validate migrations first
+        print("[pipeline] Validating migration files...")
+        errors = migration_manager.validate_migrations()
+        if errors:
+            print("[pipeline][ERROR] Migration validation failed:")
+            for error in errors:
+                print(f"  - {error}")
+            return 7
+        
+        # Show current status
+        print("[pipeline] Current migration status:")
+        status = migration_manager.get_migration_status()
+        current_version = migration_manager.version_manager.get_current_version()
+        print(f"  Current version: {current_version or 'None (fresh database)'}")
+        
+        for version, applied in status.items():
+            status_symbol = "✅" if applied else "⏳"
+            print(f"  {status_symbol} Migration {version}: {'Applied' if applied else 'Pending'}")
+        
+        # Execute migrations
+        if rollback:
+            if not target_version:
+                print("[pipeline][ERROR] Target version required for rollback")
+                return 7
+            print(f"[pipeline] {'[DRY RUN] ' if dry_run else ''}Rolling back to version {target_version}...")
+            migration_manager.migrate_down(target_version, dry_run=dry_run)
+        else:
+            print(f"[pipeline] {'[DRY RUN] ' if dry_run else ''}Applying migrations{' to version ' + target_version if target_version else ''}...")
+            migration_manager.migrate_up(target_version, dry_run=dry_run)
+        
+        # Show final status
+        if not dry_run:
+            final_version = migration_manager.version_manager.get_current_version()
+            print(f"[pipeline] Migration completed successfully. Current version: {final_version}")
+        else:
+            print("[pipeline] Dry run completed. No changes were made.")
+        
+        return 0
+        
+    except Exception as e:
+        print(f"[pipeline][ERROR][migrate] {type(e).__name__}: {e}")
+        return 7
+
 
 def main(argv: List[str] | None = None) -> int: # Main entry point for the pipeline CLI (takes optional command line arguments as a parameter)
     """
@@ -217,6 +317,14 @@ def main(argv: List[str] | None = None) -> int: # Main entry point for the pipel
     elif args.mode == "browse":
         # Browse mode (future feature)
         return run_browse_mode(args.pages)
+    
+    elif args.mode == "migrate":
+        # Migration mode
+        return run_migrate_mode(
+            target_version=args.target,
+            dry_run=args.dry_run,
+            rollback=args.rollback
+        )
     
     else:
         print(f"[pipeline][ERROR] Unknown mode: {args.mode}")

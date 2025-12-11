@@ -15,8 +15,8 @@ import importlib
 import inspect
 from typing import List, Dict, Optional, Type
 from abc import ABC, abstractmethod
-from load import DatabaseManager
-from schema_versioning import SchemaVersionManager
+from .load import DatabaseManager
+from .schema_versioning import SchemaVersionManager
 
 logger = logging.getLogger(__name__)
 

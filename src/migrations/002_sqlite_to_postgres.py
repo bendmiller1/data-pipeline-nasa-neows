@@ -9,9 +9,9 @@ import pandas as pd
 from typing import Optional
 from pathlib import Path
 from sqlalchemy import text
-from ..migration_manager import BaseMigration
-from ..load import DatabaseManager
-from ..config import DB_PATH
+from src.migration_manager import BaseMigration
+from src.load import DatabaseManager
+from src.config import DB_PATH
 
 logger = logging.getLogger(__name__)
 

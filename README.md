@@ -68,11 +68,29 @@ python -m src.pipeline --mode feed --start 2025-10-07 --end 2025-10-13 --live
 ```
 
 ### CLI Options
-- `--mode {feed,browse}`: Pipeline execution mode (feed mode implemented, browse mode planned)
+- `--mode {feed,browse,migrate}`: Pipeline execution mode (feed mode implemented, browse mode planned, migrate handles database migrations)
 - `--start YYYY-MM-DD`: Start date for data collection (required for feed mode)
 - `--end YYYY-MM-DD`: End date for data collection (required for feed mode)
+- `--target VERSION`: Target migration version (for migrate mode, optional)
+- `--dry-run`: Preview migration changes without executing (for migrate mode)
+- `--rollback`: Rollback migrations to target version (for migrate mode)
 - `--demo`: Force demo mode (use local sample data)
 - `--live`: Force live mode (use NASA API)
+
+### Database Migrations
+The pipeline includes a comprehensive migration system for schema management:
+```bash
+# Apply all pending migrations
+python -m src.pipeline --mode migrate
+
+# Preview migration changes
+python -m src.pipeline --mode migrate --dry-run
+
+# Rollback to a specific version
+python -m src.pipeline --mode migrate --rollback --target 001
+```
+
+Migrations run automatically during feed mode to ensure database schema is up-to-date.
 
 ## 📈 Sample Output
 

@@ -6,8 +6,8 @@ for both SQLite and PostgreSQL databases.
 """
 import logging
 from sqlalchemy import text
-from ..migration_manager import BaseMigration
-from ..load import DatabaseManager
+from src.migration_manager import BaseMigration
+from src.load import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
