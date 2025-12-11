@@ -90,6 +90,9 @@ CREATE TABLE IF NOT EXISTS neows (
 );
 
 CREATE INDEX IF NOT EXISTS idx_neows_id ON neows (id);
+CREATE INDEX IF NOT EXISTS idx_neows_date ON neows (close_approach_date);
+CREATE INDEX IF NOT EXISTS idx_neows_hazardous ON neows (is_potentially_hazardous);
+CREATE INDEX IF NOT EXISTS idx_neows_size ON neows (diameter_max_km);
 """
 
 # -----------------------------------------------------------------------------
@@ -247,7 +250,13 @@ class DatabaseManager:
             dict: Pool statistics and configuration information.
         """
         if not self.is_postgres:
-            return {"pool_type": "sqlite", "status": "N/A - SQLite doesn't use pooling"}
+            return {
+                "pool_type": "sqlite",
+                "engine_url": str(self.engine.url),
+                "connection_stats": self._connection_stats.copy(),
+                "status": "SQLite uses direct connections (no pooling required)",
+                "database_file": str(self.engine.url).replace("sqlite:///", "")
+            }
             
         return {
             "pool_type": "postgresql",
@@ -270,7 +279,14 @@ class DatabaseManager:
             num_connections (int): Number of connections to create. Defaults to pool_size.
         """
         if not self.is_postgres:
-            print("[load] Pool warm-up skipped: SQLite doesn't use connection pooling")
+            print("[load] SQLite connection validation (pool warm-up not needed)")
+            try:
+                # Test SQLite connection with a simple query
+                with self.get_connection() as conn:
+                    conn.execute(text("SELECT 1"))
+                print("[load] SQLite connection validated successfully")
+            except Exception as e:
+                print(f"[load] SQLite connection validation failed: {e}")
             return
             
         if num_connections is None:
@@ -342,7 +358,8 @@ class DatabaseManager:
                     if self.is_postgres:
                         result = conn.execute(text("SELECT 1 as health_check, current_timestamp, version()"))
                     else:
-                        result = conn.execute(text("SELECT 1 as health_check"))
+                        # SQLite health check with database info
+                        result = conn.execute(text("SELECT 1 as health_check, datetime('now') as current_time, sqlite_version() as version"))
                     
                     row = result.fetchone()
                     query_time = time.time() - query_start
