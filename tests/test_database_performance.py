@@ -424,7 +424,7 @@ class TestBulkOperations:
             }
             test_records.append(record)
         
-        insert_sql = text("""
+        insert_sql = """
             INSERT INTO neows (
                 id, name, close_approach_date, absolute_magnitude_h,
                 diameter_min_km, diameter_max_km, is_potentially_hazardous,
@@ -434,7 +434,7 @@ class TestBulkOperations:
                 :diameter_min_km, :diameter_max_km, :is_potentially_hazardous,
                 :relative_velocity_kps, :miss_distance_km, :orbiting_body
             )
-        """)
+        """
         
         # Measure bulk insertion time
         start_time = time.perf_counter()
@@ -543,7 +543,7 @@ class TestBulkOperations:
         # Insert test data for deletion
         num_records = 500
         
-        insert_sql = text("""
+        insert_sql = """
             INSERT INTO neows (
                 id, name, close_approach_date, absolute_magnitude_h,
                 is_potentially_hazardous
@@ -551,7 +551,7 @@ class TestBulkOperations:
                 :id, :name, :close_approach_date, :absolute_magnitude_h,
                 :is_potentially_hazardous
             )
-        """)
+        """
         
         # Insert records to be deleted
         for i in range(num_records):
@@ -706,7 +706,7 @@ class TestResourceUsage:
         # Insert a known amount of test data
         num_records = 100
         
-        insert_sql = text("""
+        insert_sql = """
             INSERT INTO neows (
                 id, name, close_approach_date, absolute_magnitude_h,
                 diameter_min_km, diameter_max_km, is_potentially_hazardous,
@@ -716,7 +716,7 @@ class TestResourceUsage:
                 :diameter_min_km, :diameter_max_km, :is_potentially_hazardous,
                 :relative_velocity_kps, :miss_distance_km, :orbiting_body
             )
-        """)
+        """
         
         for i in range(num_records):
             record = {

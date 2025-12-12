@@ -195,7 +195,7 @@ class MigrationManager:
         logger.info(f"Found {len(pending)} pending migrations: {pending}")
         return pending
     
-    def migrate_up(self, target_version: Optional[str] = None, dry_run: bool = False) -> None:
+    def migrate_up(self, target_version: Optional[str] = None, dry_run: bool = False) -> List[str]:
         """
         Apply pending migrations up to the target version.
         
@@ -233,10 +233,11 @@ class MigrationManager:
         
         if not to_apply:
             logger.info("No migrations to apply")
-            return
+            return []
         
         logger.info(f"{'[DRY RUN] ' if dry_run else ''}Applying {len(to_apply)} migrations: {to_apply}")
         
+        applied_migrations = []
         for version in to_apply:
             migration_class = migrations[version]
             migration = migration_class()
@@ -247,10 +248,13 @@ class MigrationManager:
                 try:
                     migration.up(self.db_manager)
                     self.version_manager.record_migration(version, migration.description)
+                    applied_migrations.append(version)
                     logger.info(f"Successfully applied migration {version}")
                 except Exception as e:
                     logger.error(f"Failed to apply migration {version}: {e}")
                     raise
+            
+        return applied_migrations
     
     def migrate_down(self, target_version: str, dry_run: bool = False) -> None:
         """

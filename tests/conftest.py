@@ -105,7 +105,7 @@ def postgres_test_db():
 
 
 @pytest.fixture(params=["sqlite", "postgres"])
-def dual_database(request, sqlite_test_db, postgres_test_db):
+def dual_database(request):
     """
     Parameterized fixture providing both SQLite and PostgreSQL databases.
     
@@ -115,8 +115,6 @@ def dual_database(request, sqlite_test_db, postgres_test_db):
     
     Args:
         request: pytest request object containing parameter information
-        sqlite_test_db: SQLite database fixture
-        postgres_test_db: PostgreSQL database fixture
         
     Returns:
         DatabaseManager: Database manager for the current test parameter
@@ -128,9 +126,54 @@ def dual_database(request, sqlite_test_db, postgres_test_db):
             assert result.fetchone()[0] == 1
     """
     if request.param == "sqlite":
-        return sqlite_test_db
+        # Create SQLite database inline
+        import tempfile
+        from pathlib import Path
+        from src.load import DatabaseManager
+        
+        # Create temporary file for SQLite database
+        with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as f:
+            db_path = Path(f.name)
+        
+        # Create database manager with SQLite URL
+        db_url = f"sqlite:///{db_path}"
+        db_manager = DatabaseManager(db_url)
+        
+        # Store cleanup info for later
+        request.addfinalizer(lambda: db_path.unlink(missing_ok=True))
+        
+        return db_manager
+        
     elif request.param == "postgres":
-        return postgres_test_db
+        # Create PostgreSQL database inline with skip logic
+        import os
+        from src.load import DatabaseManager
+        
+        # Get PostgreSQL test configuration from environment
+        host = os.getenv("POSTGRES_TEST_HOST", "localhost")
+        port = os.getenv("POSTGRES_TEST_PORT", "5432")
+        user = os.getenv("POSTGRES_TEST_USER", "postgres")
+        password = os.getenv("POSTGRES_TEST_PASSWORD", "postgres")
+        database = os.getenv("POSTGRES_TEST_DB", "neows_test")
+        
+        # Construct PostgreSQL connection URL
+        if password:
+            db_url = f"postgresql://{user}:{password}@{host}:{port}/{database}"
+        else:
+            db_url = f"postgresql://{user}@{host}:{port}/{database}"
+        
+        try:
+            db_manager = DatabaseManager(db_url)
+            
+            # Test connection to ensure PostgreSQL is available
+            health = db_manager.test_connection_health(timeout_seconds=2.0)
+            if not health.get('healthy', False):
+                pytest.skip("PostgreSQL test database not available")
+                
+            return db_manager
+            
+        except Exception as e:
+            pytest.skip(f"PostgreSQL test database not available: {e}")
     else:
         pytest.fail(f"Unknown database parameter: {request.param}")
 

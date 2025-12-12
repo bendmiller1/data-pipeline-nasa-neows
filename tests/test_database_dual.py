@@ -239,15 +239,15 @@ class TestSchemaConsistency:
         # Get table structure information
         if dual_database.is_postgres:
             # PostgreSQL: Query information_schema
-            result = dual_database.execute_sql(text("""
+            result = dual_database.execute_sql("""
                 SELECT column_name, data_type, is_nullable
                 FROM information_schema.columns
                 WHERE table_name = 'neows'
                 ORDER BY ordinal_position
-            """))
+            """)
         else:
             # SQLite: Use PRAGMA table_info
-            result = dual_database.execute_sql(text("PRAGMA table_info(neows)"))
+            result = dual_database.execute_sql("PRAGMA table_info(neows)")
         
         columns = result.fetchall()
         assert len(columns) >= 10, f"Expected at least 10 columns, got {len(columns)}"
@@ -280,18 +280,18 @@ class TestSchemaConsistency:
         # Verify indexes exist by checking database metadata
         if dual_database.is_postgres:
             # PostgreSQL: Query pg_indexes
-            result = dual_database.execute_sql(text("""
-                SELECT indexname FROM pg_indexes 
+            result = dual_database.execute_sql("""
+                SELECT indexname FROM pg_indexes
                 WHERE tablename = 'neows'
                 ORDER BY indexname
-            """))
+            """)
         else:
             # SQLite: Query sqlite_master for indexes
-            result = dual_database.execute_sql(text("""
-                SELECT name FROM sqlite_master 
+            result = dual_database.execute_sql("""
+                SELECT name FROM sqlite_master
                 WHERE type = 'index' AND tbl_name = 'neows'
                 ORDER BY name
-            """))
+            """)
         
         indexes = [row[0] for row in result.fetchall()]
         
@@ -328,7 +328,7 @@ class TestDataOperations:
         record = sample_neo_data[0]
         
         # Insert record using parameterized query
-        insert_sql = text("""
+        insert_sql = """
             INSERT INTO neows (
                 id, name, close_approach_date, absolute_magnitude_h,
                 diameter_min_km, diameter_max_km, is_potentially_hazardous,
@@ -338,24 +338,24 @@ class TestDataOperations:
                 :diameter_min_km, :diameter_max_km, :is_potentially_hazardous,
                 :relative_velocity_kps, :miss_distance_km, :orbiting_body
             )
-        """)
+        """
         
         # Execute insertion
         clean_database.execute_sql(insert_sql, record)
         
         # Verify record was inserted
         result = clean_database.execute_sql(
-            text("SELECT COUNT(*) FROM neows WHERE id = :id"), 
+            "SELECT COUNT(*) FROM neows WHERE id = :id", 
             {'id': record['id']}
         )
         count = result.fetchone()[0]
         assert count == 1, f"Record not inserted correctly, count: {count}"
         
         # Verify record data integrity
-        select_sql = text("""
+        select_sql = """
             SELECT id, name, is_potentially_hazardous, absolute_magnitude_h
             FROM neows WHERE id = :id
-        """)
+        """
         result = clean_database.execute_sql(select_sql, {'id': record['id']})
         row = result.fetchone()
         
@@ -377,7 +377,7 @@ class TestDataOperations:
             sample_neo_data: Sample NEO records for testing
         """
         # Insert all sample records
-        insert_sql = text("""
+        insert_sql = """
             INSERT INTO neows (
                 id, name, close_approach_date, absolute_magnitude_h,
                 diameter_min_km, diameter_max_km, is_potentially_hazardous,
@@ -387,23 +387,23 @@ class TestDataOperations:
                 :diameter_min_km, :diameter_max_km, :is_potentially_hazardous,
                 :relative_velocity_kps, :miss_distance_km, :orbiting_body
             )
-        """)
+        """
         
         # Insert each record
         for record in sample_neo_data:
             clean_database.execute_sql(insert_sql, record)
         
         # Verify total count
-        result = clean_database.execute_sql(text("SELECT COUNT(*) FROM neows"))
+        result = clean_database.execute_sql("SELECT COUNT(*) FROM neows")
         total_count = result.fetchone()[0]
         assert total_count == len(sample_neo_data)
         
         # Verify data integrity for all records
-        result = clean_database.execute_sql(text("""
+        result = clean_database.execute_sql("""
             SELECT id, is_potentially_hazardous 
             FROM neows 
             ORDER BY id
-        """))
+        """)
         
         rows = result.fetchall()
         assert len(rows) == len(sample_neo_data)
@@ -438,7 +438,7 @@ class TestDataOperations:
         }
         
         # Insert test record
-        insert_sql = text("""
+        insert_sql = """
             INSERT INTO neows (
                 id, name, close_approach_date, absolute_magnitude_h,
                 diameter_min_km, diameter_max_km, is_potentially_hazardous,
@@ -448,27 +448,25 @@ class TestDataOperations:
                 :diameter_min_km, :diameter_max_km, :is_potentially_hazardous,
                 :relative_velocity_kps, :miss_distance_km, :orbiting_body
             )
-        """)
+        """
         
         clean_database.execute_sql(insert_sql, test_record)
         
-        # Retrieve and validate data types
-        select_sql = text("""
+        # Retrieve and verify data types
+        select_sql = """
             SELECT * FROM neows WHERE id = :id
-        """)
+        """
         result = clean_database.execute_sql(select_sql, {'id': test_record['id']})
         row = result.fetchone()
         
         assert row is not None
         
         # Validate specific data type preservation
-        # Note: Column order may vary, so we'll use a more flexible approach
-        result_dict = dict(zip([col[0] for col in result.keys()], row))
-        
-        assert result_dict['name'] == test_record['name']  # Unicode handling
-        assert bool(result_dict['is_potentially_hazardous']) == test_record['is_potentially_hazardous']
-        assert float(result_dict['relative_velocity_kps']) == test_record['relative_velocity_kps']  # Zero handling
-        assert abs(float(result_dict['absolute_magnitude_h']) - test_record['absolute_magnitude_h']) < 0.001
+        # Note: SQLAlchemy Row objects can be accessed by column name directly
+        assert row.name == test_record['name']  # Unicode handling
+        assert bool(row.is_potentially_hazardous) == test_record['is_potentially_hazardous']
+        assert float(row.relative_velocity_kps) == test_record['relative_velocity_kps']  # Zero handling
+        assert abs(float(row.absolute_magnitude_h) - test_record['absolute_magnitude_h']) < 0.001
 
     def test_date_handling_consistency(self, clean_database):
         """
@@ -487,7 +485,7 @@ class TestDataOperations:
             ('DATE_TEST_003', '2030-06-15'),
         ]
         
-        insert_sql = text("""
+        insert_sql = """
             INSERT INTO neows (
                 id, name, close_approach_date, absolute_magnitude_h,
                 is_potentially_hazardous
@@ -495,7 +493,7 @@ class TestDataOperations:
                 :id, :name, :close_approach_date, :absolute_magnitude_h,
                 :is_potentially_hazardous
             )
-        """)
+        """
         
         # Insert date test records
         for test_id, test_date in date_test_cases:
@@ -509,12 +507,12 @@ class TestDataOperations:
             clean_database.execute_sql(insert_sql, record)
         
         # Retrieve and validate dates
-        result = clean_database.execute_sql(text("""
+        result = clean_database.execute_sql("""
             SELECT id, close_approach_date 
             FROM neows 
             WHERE id LIKE 'DATE_TEST_%'
             ORDER BY id
-        """))
+        """)
         
         rows = result.fetchall()
         assert len(rows) == len(date_test_cases)
@@ -553,7 +551,7 @@ class TestErrorHandling:
         """
         record = sample_neo_data[0].copy()
         
-        insert_sql = text("""
+        insert_sql = """
             INSERT INTO neows (
                 id, name, close_approach_date, absolute_magnitude_h,
                 is_potentially_hazardous
@@ -561,7 +559,7 @@ class TestErrorHandling:
                 :id, :name, :close_approach_date, :absolute_magnitude_h,
                 :is_potentially_hazardous
             )
-        """)
+        """
         
         # Insert record first time - should succeed
         clean_database.execute_sql(insert_sql, record)

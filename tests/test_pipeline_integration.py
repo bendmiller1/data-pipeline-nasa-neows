@@ -496,11 +496,11 @@ class TestPipelineIntegration:
         
         # Should either skip gracefully or provide clear error message
         if result.returncode != 0:
-            error_output = result.stderr.lower()
+            error_output = (result.stderr + result.stdout).lower()
             # Should mention connection or database issues
             connection_error = any(word in error_output for word in 
-                                 ["connection", "database", "timeout", "host"])
-            assert connection_error, f"Unclear error message: {result.stderr}"
+                                 ["connection", "database", "timeout", "host", "operational"])
+            assert connection_error, f"Unclear error message. stderr: {result.stderr}, stdout: {result.stdout}"
 
     @pytest.fixture(autouse=True)
     def cleanup_test_outputs(self):

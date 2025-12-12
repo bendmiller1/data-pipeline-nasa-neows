@@ -123,7 +123,7 @@ class SchemaVersionManager:
         """
         
         with self.db_manager.get_connection() as conn:
-            conn.execute(text(sql), {"version": version, "applied_at": datetime.now(), "description": description})
+            conn.execute(text(sql), {"version": version, "applied_at": datetime.now().isoformat(), "description": description})
             conn.commit()
             logger.info(f"Recorded migration {version}: {description}")
     

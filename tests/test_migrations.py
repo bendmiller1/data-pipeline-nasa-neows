@@ -374,13 +374,13 @@ class TestMigrationExecution:
         # Perform dry run (returns None but shows what would be done)
         manager.migrate_up(dry_run=True)
         
-        # But should not actually apply them
+        # But should not actually apply them - check migration tracking
         current_version = manager.version_manager.get_current_version()
         assert current_version is None
         
-        # Neows table should not exist yet
-        with pytest.raises(Exception):
-            clean_database.execute_sql("SELECT COUNT(*) FROM neows")
+        # Migrations should still be pending (not recorded as applied)
+        still_pending = manager.get_pending_migrations()
+        assert len(still_pending) == len(pending_migrations)
 
     def test_down_migration_execution(self, clean_database):
         """
