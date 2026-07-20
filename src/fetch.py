@@ -107,15 +107,29 @@ def fetch_feed(start_date: str, end_date: str) -> Dict[str, Any]: # Main functio
     demo_mode = os.environ.get("DEMO_MODE", "0").lower() in ("1", "true", "yes")
     
     if demo_mode: # If DEMO_MODE is True, load data from the local sample file
-        # Validate requested dates are within sample range
-        if start_date < "2025-01-01" or end_date > "2025-10-31":
-            raise ValueError("Demo mode supports dates from 2025-01-01 to 2025-10-31")
-            
+        # Validate requested dates are within sample range (2025-10-01 to 2025-10-03)
+        if start_date < "2025-10-01" or end_date > "2025-10-03":
+            raise ValueError("Demo mode supports dates from 2025-10-01 to 2025-10-03")
+
         sample_path = Path(SAMPLE_DATA_DIR) / "feed_sample.json" # Constructs the full path to the sample JSON file
-        print(f"[DEMO_MODE] Loading cached sample from {sample_path}") 
+        print(f"[DEMO_MODE] Loading cached sample from {sample_path}")
         with sample_path.open("r", encoding="utf-8") as sample_file: # Opens the sample file for reading with UTF-8 encoding (to handle any special or non-ASCII characters in the JSON)
             sample_json: Dict[str, Any] = json.load(sample_file) # Parses the JSON content into a dictionary
-            return sample_json # Returns the parsed local sample JSON data
+
+        # Filter near_earth_objects to only dates within the requested range
+        neo = sample_json.get("near_earth_objects", {})
+        filtered_neo = {
+            date_key: asteroids
+            for date_key, asteroids in neo.items()
+            if start_date <= date_key <= end_date
+        }
+        filtered_count = sum(len(asteroids) for asteroids in filtered_neo.values())
+
+        return {
+            **sample_json,
+            "near_earth_objects": filtered_neo,
+            "element_count": filtered_count,
+        }
         
     params = {
         "start_date": start_date, # User-provided start date for the API request

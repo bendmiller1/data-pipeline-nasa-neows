@@ -284,22 +284,23 @@ class TestFetchFeedDemoMode:
         This validates the core demo mode functionality for offline testing.
         """
         # Mock file content
-        sample_data = {"near_earth_objects": {"2025-01-01": []}}
-        
+        sample_data = {"near_earth_objects": {"2025-10-01": []}, "element_count": 0}
+
         # Create mock path and file objects
         mock_path_instance = MagicMock()
         mock_file = mock_open(read_data=json.dumps(sample_data))
-        
+
         mock_path_class.return_value = mock_path_instance
         mock_path_instance.__truediv__.return_value = mock_path_instance
         mock_path_instance.open.return_value = mock_file.return_value
-        
+
         # Call function
-        result = fetch_feed("2025-01-01", "2025-01-07")
-        
+        result = fetch_feed("2025-10-01", "2025-10-01")
+
         # Verify result
-        assert result == sample_data
-        
+        assert result["near_earth_objects"] == {"2025-10-01": []}
+        assert result["element_count"] == 0
+
         # Verify file operations
         mock_path_class.assert_called_once_with(SAMPLE_DATA_DIR)
         mock_path_instance.__truediv__.assert_called_once_with("feed_sample.json")
@@ -329,7 +330,7 @@ class TestFetchFeedDemoMode:
         
         # Verify FileNotFoundError is raised
         with pytest.raises(FileNotFoundError, match="Sample file not found"):
-            fetch_feed("2025-01-01", "2025-01-07")
+            fetch_feed("2025-10-01", "2025-10-01")
 
     @patch.dict(os.environ, {"DEMO_MODE": "1"})
     def test_demo_mode_date_validation_start_too_early(self):
@@ -344,8 +345,8 @@ class TestFetchFeedDemoMode:
 
         This validates demo mode date boundary enforcement for start dates.
         """
-        with pytest.raises(ValueError, match="Demo mode supports dates from 2025-01-01 to 2025-10-31"):
-            fetch_feed("2024-12-31", "2025-01-07")
+        with pytest.raises(ValueError, match="Demo mode supports dates from 2025-10-01 to 2025-10-03"):
+            fetch_feed("2024-12-31", "2025-10-01")
 
     @patch.dict(os.environ, {"DEMO_MODE": "1"})
     def test_demo_mode_date_validation_end_too_late(self):
@@ -360,8 +361,8 @@ class TestFetchFeedDemoMode:
 
         This validates demo mode date boundary enforcement for end dates.
         """
-        with pytest.raises(ValueError, match="Demo mode supports dates from 2025-01-01 to 2025-10-31"):
-            fetch_feed("2025-01-01", "2025-11-01")
+        with pytest.raises(ValueError, match="Demo mode supports dates from 2025-10-01 to 2025-10-03"):
+            fetch_feed("2025-10-01", "2025-11-01")
 
     @patch.dict(os.environ, {"DEMO_MODE": "1"})
     @patch("src.fetch.Path")
@@ -378,21 +379,25 @@ class TestFetchFeedDemoMode:
         This validates proper acceptance of valid demo mode date ranges.
         """
         # Mock file content
-        sample_data = {"near_earth_objects": {"2025-06-15": []}}
-        
+        sample_data = {
+            "near_earth_objects": {"2025-10-01": [], "2025-10-02": [], "2025-10-03": []},
+            "element_count": 0,
+        }
+
         # Create mock path and file objects
         mock_path_instance = MagicMock()
         mock_file = mock_open(read_data=json.dumps(sample_data))
-        
+
         mock_path_class.return_value = mock_path_instance
         mock_path_instance.__truediv__.return_value = mock_path_instance
         mock_path_instance.open.return_value = mock_file.return_value
-        
+
         # Test dates within valid range
-        result = fetch_feed("2025-06-01", "2025-06-30")
-        
+        result = fetch_feed("2025-10-01", "2025-10-03")
+
         # Should succeed without raising ValueError
-        assert result == sample_data
+        assert result["near_earth_objects"] == {"2025-10-01": [], "2025-10-02": [], "2025-10-03": []}
+        assert result["element_count"] == 0
 
     @patch.dict(os.environ, {"DEMO_MODE": "1"})
     @patch("src.fetch.Path")
@@ -418,7 +423,7 @@ class TestFetchFeedDemoMode:
         
         # Verify JSONDecodeError is raised
         with pytest.raises(json.JSONDecodeError):
-            fetch_feed("2025-01-01", "2025-01-07")
+            fetch_feed("2025-10-01", "2025-10-01")
 
     @patch.dict(os.environ, {"DEMO_MODE": "true"})
     @patch("src.fetch.Path")
@@ -435,19 +440,19 @@ class TestFetchFeedDemoMode:
         This validates flexible demo mode environment variable detection.
         """
         # Mock file content
-        sample_data = {"test": "data"}
-        
+        sample_data = {"near_earth_objects": {"2025-10-01": []}, "element_count": 0}
+
         # Create mock path and file objects
         mock_path_instance = MagicMock()
         mock_file = mock_open(read_data=json.dumps(sample_data))
-        
+
         mock_path_class.return_value = mock_path_instance
         mock_path_instance.__truediv__.return_value = mock_path_instance
         mock_path_instance.open.return_value = mock_file.return_value
-        
+
         # Should work with DEMO_MODE="true"
-        result = fetch_feed("2025-05-01", "2025-05-07")
-        assert result == sample_data
+        result = fetch_feed("2025-10-01", "2025-10-01")
+        assert result["near_earth_objects"] == {"2025-10-01": []}
 
 
 class TestFetchFeedLiveMode:
@@ -615,17 +620,17 @@ class TestFetchFeedModeDetection:
         """
         # Mock successful file operations for demo mode
         mock_path_instance = MagicMock()
-        sample_data = {"demo": "mode_1"}
+        sample_data = {"near_earth_objects": {"2025-10-01": []}, "element_count": 0}
         mock_file = mock_open(read_data=json.dumps(sample_data))
-        
+
         mock_path_class.return_value = mock_path_instance
         mock_path_instance.__truediv__.return_value = mock_path_instance
         mock_path_instance.open.return_value = mock_file.return_value
-        
-        result = fetch_feed("2025-05-01", "2025-05-07")
-        
+
+        result = fetch_feed("2025-10-01", "2025-10-01")
+
         # Verify demo mode was used (file operations called)
-        assert result == sample_data
+        assert result["near_earth_objects"] == {"2025-10-01": []}
         mock_path_class.assert_called_once_with(SAMPLE_DATA_DIR)
 
     @patch("src.fetch.Path")
@@ -644,17 +649,17 @@ class TestFetchFeedModeDetection:
         """
         # Mock successful file operations for demo mode
         mock_path_instance = MagicMock()
-        sample_data = {"demo": "mode_true"}
+        sample_data = {"near_earth_objects": {"2025-10-01": []}, "element_count": 0}
         mock_file = mock_open(read_data=json.dumps(sample_data))
-        
+
         mock_path_class.return_value = mock_path_instance
         mock_path_instance.__truediv__.return_value = mock_path_instance
         mock_path_instance.open.return_value = mock_file.return_value
-        
-        result = fetch_feed("2025-06-01", "2025-06-07")
-        
+
+        result = fetch_feed("2025-10-01", "2025-10-01")
+
         # Verify demo mode was used
-        assert result == sample_data
+        assert result["near_earth_objects"] == {"2025-10-01": []}
         mock_path_class.assert_called_once()
 
     @patch("src.fetch.Path")
@@ -673,17 +678,17 @@ class TestFetchFeedModeDetection:
         """
         # Mock successful file operations for demo mode
         mock_path_instance = MagicMock()
-        sample_data = {"demo": "mode_yes"}
+        sample_data = {"near_earth_objects": {"2025-10-01": []}, "element_count": 0}
         mock_file = mock_open(read_data=json.dumps(sample_data))
-        
+
         mock_path_class.return_value = mock_path_instance
         mock_path_instance.__truediv__.return_value = mock_path_instance
         mock_path_instance.open.return_value = mock_file.return_value
-        
-        result = fetch_feed("2025-07-01", "2025-07-07")
-        
+
+        result = fetch_feed("2025-10-01", "2025-10-01")
+
         # Verify demo mode was used
-        assert result == sample_data
+        assert result["near_earth_objects"] == {"2025-10-01": []}
         mock_path_class.assert_called_once()
 
     @patch("src.fetch._http_get")

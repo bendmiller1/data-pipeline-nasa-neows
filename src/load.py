@@ -454,10 +454,11 @@ class DatabaseManager:
 def ensure_database_ready( # Function to ensure the database and neows table exist (creates them if not)
         database_url: Optional[str] = None, # Optional database connection string (if None, uses the default DATABASE_URL from config.py)
         schema_sql_path: Optional[Path] = None, # Optional path to a .sql file containing DDL statements (if None, uses the DEFAULT_SCHEMA_SQL)
+        db_manager: Optional["DatabaseManager"] = None, # Optional existing DatabaseManager to reuse (avoids creating a second engine)
 ) -> None:
     """
     Create the database and neows table if they do not exist.
-    
+
     Works with both SQLite and PostgreSQL backends. For SQLite, ensures
     the directory structure exists. For both databases, applies the
     appropriate schema.
@@ -467,16 +468,21 @@ def ensure_database_ready( # Function to ensure the database and neows table exi
             uses the configured DATABASE_URL.
         schema_sql_path (Optional[Path]): Optional path to a .sql file containing
             DDL statements. If provided, overrides the default schema.
+        db_manager (Optional[DatabaseManager]): Existing DatabaseManager to reuse.
+            If provided, database_url is ignored for engine creation.
 
     Raises:
         sqlalchemy.exc.SQLAlchemyError: If database or schema creation fails.
     """
-    # Use configured DATABASE_URL if none provided
-    if database_url is None:
-        database_url = DATABASE_URL
-    
-    # Create DatabaseManager instance
-    db = DatabaseManager(database_url)
+    # Use provided db_manager or create one
+    if db_manager is None:
+        if database_url is None:
+            database_url = DATABASE_URL
+        db = DatabaseManager(database_url)
+    else:
+        db = db_manager
+        if database_url is None:
+            database_url = db.database_url
 
     # For SQLite, ensure the directory structure exists
     if not db.is_postgres and database_url.startswith("sqlite:///"):
@@ -524,10 +530,11 @@ def delete_date_range( # Function to delete rows in the requested date range fro
         end_date: str, # End date of the range to delete (inclusive, in "YYYY-MM-DD" format)
         database_url: Optional[str] = None, # Optional database connection string (if None, uses the default DATABASE_URL from config.py)
         table_name: str = "neows", # Name of the table to delete the range from (e.g., "neows")
+        db_manager: Optional["DatabaseManager"] = None, # Optional existing DatabaseManager to reuse (avoids creating a second engine)
 ) -> int:
     """
     Delete rows in [start_date, end_date] (inclusive) from the target table.
-    
+
     Works with both SQLite and PostgreSQL backends. Enables reruns of the same
     range of dates by clearing existing data before new inserts.
 
@@ -537,19 +544,22 @@ def delete_date_range( # Function to delete rows in the requested date range fro
         database_url (Optional[str]): Database connection string. If None,
             uses the configured DATABASE_URL.
         table_name (str): Table to delete from. Defaults to "neows".
+        db_manager (Optional[DatabaseManager]): Existing DatabaseManager to reuse.
+            If provided, database_url is ignored for engine creation.
 
     Returns:
         int: Number of rows deleted.
-        
+
     Raises:
         sqlalchemy.exc.SQLAlchemyError: If the delete operation fails.
     """
-    # Use configured DATABASE_URL if none provided
-    if database_url is None:
-        database_url = DATABASE_URL
-
-    # Create DatabaseManager instance
-    db = DatabaseManager(database_url)
+    # Use provided db_manager or create one
+    if db_manager is None:
+        if database_url is None:
+            database_url = DATABASE_URL
+        db = DatabaseManager(database_url)
+    else:
+        db = db_manager
 
     # Execute DELETE with parameterized query (safe from SQL injection)
     result = db.execute_sql(
@@ -587,25 +597,18 @@ def prepare_dataframe_for_postgres(dataframe: pd.DataFrame) -> pd.DataFrame:
     optimized_df = dataframe.copy()
     
     # Convert date columns to datetime
-    date_columns = ['close_approach_date', 'epoch_date_close_approach', 'orbital_period_days']
+    date_columns = ['close_approach_date']
     for col in date_columns:
         if col in optimized_df.columns:
             try:
-                # Handle different date formats
+                # Expected format: YYYY-MM-DD
                 if col == 'close_approach_date':
-                    # Expected format: YYYY-MM-DD
                     optimized_df[col] = pd.to_datetime(optimized_df[col], format='%Y-%m-%d', errors='coerce')
-                elif col == 'epoch_date_close_approach':
-                    # Expected format: Unix timestamp or ISO format
-                    optimized_df[col] = pd.to_datetime(optimized_df[col], errors='coerce')
-                elif col == 'orbital_period_days':
-                    # Convert to numeric first, then handle as days
-                    optimized_df[col] = pd.to_numeric(optimized_df[col], errors='coerce')
             except Exception as e:
                 print(f"[load] Warning: Could not convert {col} to datetime: {e}")
     
     # Convert boolean-like integer columns
-    boolean_columns = ['is_potentially_hazardous', 'is_sentry_object']
+    boolean_columns = ['is_potentially_hazardous']
     for col in boolean_columns:
         if col in optimized_df.columns:
             try:
@@ -634,7 +637,7 @@ def prepare_dataframe_for_postgres(dataframe: pd.DataFrame) -> pd.DataFrame:
                 print(f"[load] Warning: Could not optimize numeric column {col}: {e}")
     
     # Validate string columns and limit length for VARCHAR efficiency
-    string_columns = ['id', 'name', 'nasa_jpl_url', 'orbiting_body']  # Updated column names
+    string_columns = ['id', 'name', 'orbiting_body']
     for col in string_columns:
         if col in optimized_df.columns:
             try:
@@ -642,11 +645,7 @@ def prepare_dataframe_for_postgres(dataframe: pd.DataFrame) -> pd.DataFrame:
                 optimized_df[col] = optimized_df[col].astype(str)
                 # Replace 'nan' strings with actual NaN
                 optimized_df[col] = optimized_df[col].replace('nan', pd.NA)
-                # Truncate very long strings to reasonable limits for PostgreSQL VARCHAR
-                if col == 'nasa_jpl_url':
-                    optimized_df[col] = optimized_df[col].str[:500]  # URLs can be long
-                else:
-                    optimized_df[col] = optimized_df[col].str[:255]  # Standard VARCHAR limit
+                optimized_df[col] = optimized_df[col].str[:255]  # Standard VARCHAR limit
             except Exception as e:
                 print(f"[load] Warning: Could not optimize string column {col}: {e}")
     
@@ -709,8 +708,11 @@ def load_dataframe_to_database( # Main function to load a pandas DataFrame into 
     if database_url is None:
         database_url = DATABASE_URL
 
+    # Single engine instance for all operations
+    db = DatabaseManager(database_url)
+
     # Ensure database and table exist
-    ensure_database_ready(database_url)
+    ensure_database_ready(database_url, db_manager=db)
 
     # Optional pre-delete to keep re-runs idempotent
     if delete_range_before_insert and start_date and end_date:
@@ -719,11 +721,9 @@ def load_dataframe_to_database( # Main function to load a pandas DataFrame into 
             end_date=end_date,
             database_url=database_url,
             table_name=table_name,
+            db_manager=db,
         )
         print(f"[load] Pre-delete: removed {deleted_rows} rows in [{start_date} .. {end_date}]")
-
-    # Create DatabaseManager instance and insert data
-    db = DatabaseManager(database_url)
     
     # Optimize DataFrame for PostgreSQL if using PostgreSQL backend
     if db.is_postgres:
